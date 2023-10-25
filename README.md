@@ -79,17 +79,19 @@ The additional meta data in the `.axfw` can be used to ensure the new firmware i
 
 This table describes the meta data stored in the header section of the `.axfw` files.
 
-| Byte(s) | Description         | Notes                                       |
-| :---:   | :----               | :---                                        |
-| 0-3     | File Signature      | ASCII `'AXFW'`                              |
-| 4-5     | File Format Version | Little Endian                               |
-| 6-7     | Device ID           | Little Endian, see list of Device IDs below |
-| 8       | Firmware Variant    | See list of Firmware Variants below         |
-| 9-10    | Firmware Version    | Little Endian                               |
-| 11      | Firmware Status     | See list of Firmware Status below           |
-| 12      | Release Candidate   | Release candidate version                   |
-| 13-14   | Silicon Version     | See list of Silicon Versions below          |
-| 15      | Silicon Revision    | Revision of the silicon                     |
+| Byte(s) | Description             | Notes                                                 |
+| :---:   | :----                   | :---                                                  |
+| 0-3     | File Signature          | ASCII `'AXFW'`                                        |
+| 4-7     | .axfw CRC               | CRC of the entire firmware file (including metadata)  |
+| 8-9     | File Format Version     | Little Endian                                         |
+| 10-11   | Device ID               | Little Endian, see list of Device IDs below           |
+| 12      | Firmware Variant        | See list of Firmware Variants below                   |
+| 13-14   | Firmware Version        | Little Endian                                         |
+| 15      | Firmware Patch Number   | Patch Number of the Firmware Release                  |
+| 16      | Firmware Status         | See list of Firmware Status below                     |
+| 17-18   | Silicon Version         | See list of Silicon Versions below                    |
+| 19      | Silicon Revision        | Revision of the silicon                               |
+| 20-23   | Firmware CRC            | CRC of the firmware                                   |
 
 The remaining content is the payload that needs to be chunked up before sending to the aXiom bootloader. All of the bytes specified below are located immediatly after the meta data section (i.e. add 16 bytes to all the offsets specified).
 
