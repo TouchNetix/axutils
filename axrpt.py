@@ -68,6 +68,8 @@ def decode_and_process_report(report):
         decode_u41(report[2:])
     elif report[1] == 0x4C:
         decode_u4C(report[2:])
+    elif report[1] == 0x45:
+        decode_u45(report[2:])
 
 def gpio_interrupt(channel):
     decode_and_process_report(comms.read_page(U34_TARGET_ADDRESS, U34_READ_LENGTH))
@@ -111,6 +113,38 @@ def decode_u4C(report):
     #print("u4C Report")
     #print(" ".join("{:02x}".format(num) for num in report))
     pass
+
+def decode_u45(report):
+
+    hotspot_number = report[0]
+    contact_number = report[1]
+    qualification_number = report[2]
+    reason = report[3]
+    decoded_reason = "invalid"
+
+    match reason:
+        case 0:
+            decoded_reason = "ENTERED"
+        case 1:
+            decoded_reason = "EXITED"
+        case 2:
+            decoded_reason = "PRESSED"
+        case 3:
+            decoded_reason = "RELEASED"
+        case 4:
+            decoded_reason = "MOVED"
+        case 5:
+            decoded_reason = "ENTERED AND PRESSED"
+        case 6:
+            decoded_reason = "EXITED AND RELEASED"
+        case 7:
+            decoded_reason = "APPROACHED"
+        case 8:
+            decoded_reason = "RETREATED"
+    
+    print(f"Contact {contact_number} has {decoded_reason} hotspot {hotspot_number}, qualification {qualification_number}")
+    print("")
+        
 
 def main_loop_polled(comms):
     try:
