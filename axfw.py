@@ -325,7 +325,10 @@ if __name__ == '__main__':
     print("")
     print("Device info after download:")
     axiom.print_device_info()
-    validate_runtime_crc(axiom, firmware_file)
+
+    # The firmware CRC can be validated if a axfw file was used.
+    if firmware_file.endswith(".axfw"):
+        validate_runtime_crc(axiom, firmware_file)
 
     # Safely close the connection to aXiom
     axiom.close()
