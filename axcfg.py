@@ -82,6 +82,8 @@ if __name__ == '__main__':
 
     ax = init_axiom_comms(args.i)
 
+    ax.u31.print_device_info()
+
     print("u33 CRC Data Before Config Load:")
     u33 = u33_CRCData(ax)
     u33.print()
@@ -118,7 +120,7 @@ if __name__ == '__main__':
                     # Length field is MSB (why!?)
                     length = struct.unpack("<H", file.read(2))[0]
                     usage_content = list(struct.unpack("<"+str(length)+"B", file.read(length)))
-    
+
                     # Write the data to the device
                     if overwrite_u04:
                         ax.config_write_usage_to_device(usage, usage_content)

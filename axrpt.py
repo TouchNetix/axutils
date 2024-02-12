@@ -54,7 +54,7 @@ def axiom_init(args, verbose=False):
         from axiom_tc.USB_Comms import USB_Comms
         comms = USB_Comms(verbose)
 
-    ax = axiom(comms, verbose=verbose)
+    ax = axiom(comms)
 
     # Dummy read to purge anything left in the u34 FIFO buffer
     comms.read_page(U34_TARGET_ADDRESS, U34_READ_LENGTH)

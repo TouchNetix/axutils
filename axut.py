@@ -67,8 +67,8 @@ if __name__ == '__main__':
     # provide access to the low level reads and write methods.
     axiom = axiom(comms)
 
-    axiom.print_device_info()
-    axiom.print_usage_table()
+    axiom.u31.print_device_info()
+    axiom.u31.print_usage_table()
 
     axiom.close()
     sys.exit(0)
