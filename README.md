@@ -8,7 +8,7 @@ Reference code in this section is provided to demonstrate how small tools can be
 
 `axut` queries an aXiom device and reports firmware version information as well as the usage table.
 
-`axrpt` provides example code to read reports from aXiom in either a polled or interupt driven scheme. A Raspberry Pi is requuired for this interrupt driven example to function.
+`axrpt` provides example code to read reports from aXiom in either a polled or interupt driven scheme. A Raspberry Pi is required for this interrupt driven example to function.
 
 `axfactdata` reads out the aXiom device's factory data.
 
@@ -38,7 +38,7 @@ pip install spidev
 
 See [spidev](https://pypi.org/project/spidev/) for more information.
 
-### I<sup>2</sup>C Interface
+### I2C Interface
 
 Requires `smbus2` to be installed and accessible to your Python interpreter.
 
@@ -51,13 +51,52 @@ See [smbus2](https://pypi.org/project/smbus2/) for more information.
 ### USB Interface
 
 Requires `hid` to be installed and accessible to your Python interpreter.
-You will usually need sudo access for this, so:
 
 ```console
-sudo python3 -m pip install hid
+pip install hid==1.0.4
 ```
 
 See [hid](https://pypi.org/project/hid/) for more information.
+
+#### Linux
+
+Using the `hid` package will access the TouchNetix protocol bridges via the `/dev/hidrawX` interface. This typically requires root access. This means the scripts will need to be run as `sudo`. Alternativly, `udev` can be used to give all users permissions to the `hidraw` devices.
+
+Create the following `udev` rules file `/etc/udev/rules.d/99-axiom-hidraw-permissions.rules`:
+
+```text
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="6f02", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2f04", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2f08", MODE="0666"
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="6f02", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="2f04", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="2f08", MODE="0666"
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="6f02", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="2f04", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="2f08", MODE="0666"
+```
+
+The changes will apply on the next bootup. To apply the changes immediatly:
+
+```console
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+#### Windows
+
+Windows requires the `hidapi.dll` files to reside in the same directory as python (see more info [here](https://github.com/abcminiuser/python-elgato-streamdeck/issues/56))
+The `.dll` files can be found [here](https://github.com/libusb/hidapi/releases)
+
+### RPi.GPIO
+
+When using `axrpt`, it can be configured to use a GPIO for interrupts. This will only work on a Raspberry Pi and will require the `RPi.GPIO` package to generate the interrupt based on a GPIO pin transition.
+
+```console
+pip install RPi.GPIO
+```
 
 ## Usage
 
@@ -136,24 +175,24 @@ aXiom config files are export from TouchHub2 as `.th2cfgbin` files. The data str
 
 This table describes the meta data stored in the header section of the `.th2cfgbin` files.
 
-| Byte(s) | Description             | Notes                   |
-| :---:   | :----                   | :---                    |
-| 0-3     | File Signature          | `0x20071969`            |
-| 4-5     | File Format Version     | `0x0001`, Little Endian |
-| 6-7     | TCP File Revision Major | Little Endian           |
-| 8-9     | TCP File Revision Minor | Little Endian           |
-| 10-11   | TCP File Revision Patch | Little Endian           |
-| 12      | TCP Version             |                         |
+| Byte(s) | Description             | Notes        |
+| :---:   | :----                   | :---         |
+| 0-3     | File Signature          | `0x20071969` |
+| 4-5     | File Format Version     | `0x0001`     |
+| 6-7     | TCP File Revision Major |              |
+| 8-9     | TCP File Revision Minor |              |
+| 10-11   | TCP File Revision Patch |              |
+| 12      | TCP Version             |              |
 
 The remaining content of the config file is the data that needs to be written to aXiom. The config data is split into usages. Each usage is packed contigously, and can be navigated by reading the usage length fields.
 
-| Byte(s)  | Description    | Notes                                  |
-| :---:    | :----          | :---                                   |
-| 0        | Usage Number   | The usage identifier                   |
-| 1        | Usage Revision | The revision of the usage              |
-| 2        | Padding        | Reserved for future use                |
-| 3-4      | Usage Length   | Length of usage contents, *Big Endian* |
-| 5-Length | Usage Content  | Binary content of the usage            |
+| Byte(s)  | Description    | Notes                                     |
+| :---:    | :----          | :---                                      |
+| 0        | Usage Number   | The usage identifier                      |
+| 1        | Usage Revision | The revision of the usage                 |
+| 2        | Padding        | Reserved for future use                   |
+| 3-4      | Usage Length   | Length of usage contents, *Little Endian* |
+| 5-Length | Usage Content  | Binary content of the usage               |
 
 *Note:* It is generally recomended to not write to u04 (Customer Data) as the intended purpose of this field is for customers to store data like serial numbers, part numbers etc. Writing to u04 will lose this information.
 
@@ -166,11 +205,6 @@ The `axutils` scripts are meant to be used on a system running. However, dependi
 | USB    | Linux Kernel | Yes                   |
 | SPI    | Linux Kernel | Without driver loaded |
 | I2C    | Linux Kernel | Without driver loaded |
-
-### Using Windows
-
-Windows requires the `hidapi.dll` files to reside in the same directory as python (see more info [here](https://github.com/abcminiuser/python-elgato-streamdeck/issues/56))
-The `.dll` files can be found [here](https://github.com/libusb/hidapi/releases)
 
 ## License
 
