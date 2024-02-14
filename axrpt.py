@@ -155,6 +155,12 @@ def main_loop_interrupts(comms, report_logger, u34_ta, u34_max_report_length):
     gpio_interrupt_callback = partial(gpio_interrupt, comms=comms, report_logger=report_logger, u34_ta=u34_ta, u34_max_report_length=u34_max_report_length)
     GPIO.add_event_detect(24, GPIO.FALLING, callback=gpio_interrupt_callback, bouncetime=1)
 
+    # The GPIO library can only trigger an interrupt on a falling or rising edge. Ideally, it would be
+    # level triggered as there could be a report waiting before the interrupt was enabled and therefore
+    # the falling edge was missed. Prime the system by performing a read now as that will deassert any
+    # IRQ from aXiom.
+    comms.read_page(u34_ta, u34_max_report_length)
+
     while keyboard_signal_interrupt_requested == False:
         time.sleep(0.001)
 
@@ -246,9 +252,6 @@ Exit status codes:
 
     u34_ta = axiom.u31.convert_usage_to_target_address(0x34)
     u34_max_report_length = axiom.u31.max_report_len
-
-    # Dummy read to purge anything left in the u34 FIFO buffer
-    comms.read_page(u34_ta, u34_max_report_length)
 
     print("Press Ctrl+C at any time to safely exit the script.")
 
