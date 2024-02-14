@@ -1,105 +1,95 @@
-import sys
+# Copyright (c) 2024 TouchNetix
+# 
+# This file is part of [Project Name] and is released under the MIT License: 
+# See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
+
+
 import argparse
-from time import sleep
 from axiom_tc import axiom
 
-FORMAT_STRING="0x%01X"
-def write_to_csv(file,data):
-    for byte in data:
-        file.write((FORMAT_STRING + "\n") % byte)
+def print_data(data):
+    # Header for byte indexes
+    print('Offset (h) ', end='')
+    for i in range(16):
+        print(f'{i:02X}', end=' ')
+    print()
 
-def print_array(data):
-    for byte in data:
-        print(FORMAT_STRING % byte)
+    # Print each byte with an offset
+    for i, byte in enumerate(data):
+        if i % 16 == 0:
+            print(f'{i:08X}: ', end=' ')
+        print(f'{byte:02X}', end=' ')
+        if (i + 1) % 16 == 0:
+            print()  # Newline after every 16 bytes
 
+    # Handle case where byte_array length is not a multiple of 16
+    if len(data) % 16 != 0:
+        print()
 
-def axiom_init(args, verbose=False):
-    if args.i == "i2c":
-        comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
-
-    elif args.i == "spi":
-        comms = SPI_Comms(args.spi_bus, args.spi_device)
-
-    elif args.i == "usb":
-        comms = USB_Comms()
-
-    # When instantiating the aXiom object, pass in the comms object which will
-    # provide access to the low level reads and write methods.
-    ax = axiom(comms)
-
-    # Build the usage table, essentially discover the aXiom device. The main
-    # aim with this is to locate all the usages so that when the config file is
-    # loaded, it knows where to put all the data.
-    ret = ax.build_usage_table()
-    if ret:
-        if verbose: ax.print_usage_table()
-    else:
-        raise ConnectionError
-
-    if verbose:
-        print("u33 CRC Data:")
-        ax.get_u33_crc_data().show_crc_data()
-
-    return ax
-
+def write_data_to_file(file, data):
+    with open(file, 'wb') as f:
+        f.write(bytearray(data))
 
 if __name__ == '__main__':
+    # Create argument parser
+    parser = argparse.ArgumentParser(
+        description='Utility to retrieve the u36 Factory Calibration Data from an aXiom device',
+        epilog='''
+Usage examples:
+    python %(prog)s -i usb
+    python %(prog)s -i usb -o u36_output.bin
+    python %(prog)s -i i2c --i2c-bus 1 --i2c-address 0x67 -o u36_output.bin
+    python %(prog)s -i spi --spi-bus 0 --spi-device 0 -o u36_output.bin
 
-    exit_code = 0
-    parser = argparse.ArgumentParser(description=\
-    'Utility to retrieve the Factory Calibration Data from an aXiom device')
-    parser.add_argument("-o", help='Output file for the Factory Calibration Data.', metavar='DATA_FILE', required=False, type=str, default='')
-    parser.add_argument("-i", help='comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True, type=str)
-    parser.add_argument("-v", help='Print verbose messages', action="store_true")
-    parser.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', required=False, type=int)
-    parser.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR', required=False, type=str)
-    parser.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', required=False, type=int)
-    parser.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', required=False, type=int)
+Exit status codes:
+    0 : Success
+    2 : Script argument syntax issue. See --help
+''', formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    # Create argument groups
+    interface_group = parser.add_argument_group('Interface Options')
+    output_group = parser.add_argument_group('Output Options')
+
+    # Add arguments to their respective groups
+    interface_group.add_argument("-i", "--interface", help='Comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True)
+    interface_group.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', type=int)
+    interface_group.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR')
+    interface_group.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', type=int)
+    interface_group.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', type=int)
+
+    output_group.add_argument("-o", "--output", help='Output file for the u36 Factory Calibration Data', metavar='DATA_FILE', required=False, type=str, default='')
+
     args = parser.parse_args()
+    
+    if args.interface == "i2c":
+        if (args.i2c_bus is None or args.i2c_address is None):
+            parser.error("The --i2c-bus and --i2c-address arguments are required when using the I2C interface.")
 
-    # Get the config file path from the arguments
-    data_file_name = args.o
-    verbose = args.v
+        from axiom_tc.I2C_Comms import I2C_Comms
+        comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
 
+    if args.interface == "spi":
+        if (args.spi_bus is None or args.spi_device is None):
+            parser.error("The --spi-bus and --spi-device arguments are required when using the SPI interface.")
 
-    # Import the requested comms layer
-    if args.i == "i2c":
-        if args.i2c_bus == None or args.i2c_address == None:
-            print("The I2C bus and the I2C address arguments need to be specified.")
-            parser.print_help()
-            sys.exit(-1)
-        else:
-            from axiom_tc.I2C_Comms import I2C_Comms
+        from axiom_tc.SPI_Comms import SPI_Comms
+        comms = SPI_Comms(args.spi_bus, args.spi_device)
 
-    elif args.i == "spi":
-        if args.spi_bus == None or args.spi_device == None:
-            print("The SPI bus and the SPI device arguments need to be specified.")
-            parser.print_help()
-            sys.exit(-1)
-        else:
-            from axiom_tc.SPI_Comms import SPI_Comms
+    if args.interface == "usb":
+        from axiom_tc.USB_Comms import USB_Comms
+        comms = USB_Comms()
 
-    elif args.i == "usb":
-            from axiom_tc.USB_Comms import USB_Comms
+    # Initialise comms with axiom 
+    axiom = axiom(comms)
 
+    # Read the u36 from the aXiom device
+    u36 = axiom.read_usage(0x36)
 
-    axiom = axiom_init(args, verbose=verbose)
+    # Either print the output to stdout or write the contents to a file
+    if args.output != "":
+        write_data_to_file(args.output, u36)
+    else:
+        print_data(u36)
 
-    try:
-        u36 = axiom.read_usage(0x36)
-
-        # Parse get factory data and write to file
-        if data_file_name != "":
-            data_file = open(data_file_name, "w")
-            write_to_csv(data_file, u36)
-            print("%d bytes of factory Calibration Data saved to file." % len(u36))
-        else:
-            print_array(u36)
-
-    except:
-        print("Failed to read factory calibration data from aXiom.")
-        exit_code = -1
-        
     # Safely close the connection to aXiom
     axiom.close()
-    sys.exit(exit_code)
