@@ -3,62 +3,87 @@
 # This file is part of [Project Name] and is released under the MIT License: 
 # See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
-import sys
+import time
 import argparse
+import logging
+import signal
+from functools import partial
 from axiom_tc import axiom
 
-U34_TARGET_ADDRESS = 0x0800
-U34_READ_LENGTH = 58
+keyboard_signal_interrupt_requested = False
 
-def axiom_init(args, verbose=False):
-    if args.i == "i2c":
-        if args.i2c_bus == None or args.i2c_address == None:
-            print("The I2C bus and the I2C address arguments need to be specified.")
-            parser.print_help()
-            sys.exit(-1)
-        else:
-            from axiom_tc.I2C_Comms import I2C_Comms
-            comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
+class AxiomReportLoggingFilter(logging.Filter):
+    def __init__(self):
+        super().__init__()
 
-    elif args.i == "spi":
-        if args.spi_bus == None or args.spi_device == None:
-            print("The SPI bus and the SPI device arguments need to be specified.")
-            parser.print_help()
-            sys.exit(-1)
-        else:
-            from axiom_tc.SPI_Comms import SPI_Comms
-            comms = SPI_Comms(args.spi_bus, args.spi_device)
+        # A list of reports that aXiom can produce. Not all reports are decoded in this script
+        # When the script is run, the user will pass in an argument to speciy which reports
+        # they want to consume, so this will default to all reports being off. See --help
+        self.reports = {0x01: False,
+                        0x21: False,    # Not yet decoded
+                        0x41: False,
+                        0x45: False,    # Not yet decoded
+                        0x46: False,    # Not yet decoded
+                        0x4C: False,    # Not yet decoded
+                        0x81: False,    # Not yet decoded
+                        0xF3: False}    # Not yet decoded
 
-    elif args.i == "usb":
-        from axiom_tc.USB_Comms import USB_Comms
-        comms = USB_Comms(verbose)
+    def filter(self, record):
+        # Each log will have a "usage" attribute that will be used to compare
+        # against the filter enable/disable list
+        usage = getattr(record, 'usage', False)
+        return self.reports[usage]
+    
+    def updateFilter(self, usage, enabled):
+        if usage in self.reports:
+            self.reports[usage] = enabled
 
-    ax = axiom(comms)
+def custom_signal_handler(signum, frame):
+    """
+    Custom CTRL+C handler that will set a global flag that will allow the script
+    to exit at a safe point and close the connection to the aXiom device.
+    """
+    global keyboard_signal_interrupt_requested
+    keyboard_signal_interrupt_requested = True
 
-    # Dummy read to purge anything left in the u34 FIFO buffer
-    comms.read_page(U34_TARGET_ADDRESS, U34_READ_LENGTH)
+def arg_hex_type(x):
+    """
+    Custom argparse type to allow hex values to be input as script arguments
+    """
+    return int(x, 16)
 
-    return ax, comms
-
-def decode_and_process_report(report):
+def decode_and_process_report(report, report_logger):
+    """
+    A report has been recieved, pass it off to the relevant decoder.
+    Byte 0: bits 14-0 - Report length in words
+            bit 15    - Report overflow, i.e. a previous report has been missed
+    Byte 1: Usage ID, which usage generated this report
+    """
     if report[1] == 0x01:
-        decode_u01(report[2:])
+        decode_u01(report_logger, report[2:])
     elif report[1] == 0x41:
-        decode_u41(report[2:])
-    elif report[1] == 0x4C:
-        decode_u4C(report[2:])
+        decode_u41(report_logger, report[2:])
 
-def gpio_interrupt(channel):
-    decode_and_process_report(comms.read_page(U34_TARGET_ADDRESS, U34_READ_LENGTH))
-
-def decode_u41(report):
-    #print "Touch Report"
-    #print(" ".join("{:02x}".format(num) for num in report))
-    #pass
+def decode_u41(report_logger, report):
+    """
+    Decode u41 2DCTS report. This decode assumes all targets are either touch, press, hover,
+    proximity or center of mass. Dials are not being handled. u42 could be read to determine
+    what data is present in each target slot and decoded accoringly.
+    """
+    # Find out which targets are reporting a position in this report
     target_status = (report[0]) + ((report[1] & 0x03) << 8)
-    ae_error = (report[1] & 0x80) >> 7
 
-    for t in range(0,10):
+    # Other status information from the report, see docs for details
+    extra_info = (report[1] & 0xFC) >> 2
+
+    # Extract the timestamp and checksum from the report
+    timestamp = report[52] + (report[53] << 8)
+    checksum  = report[54] + (report[55] << 8)
+
+    report_string = "u41 {0:>5} {1:>3X} {2:>2X}  ".format(timestamp, target_status, extra_info)
+
+    # Loop over all the targets in the report and extract the X, Y and Z values.
+    for t in range(0, 10):
         # X & Y
         offset = (t * 4) + 2
         x = report[offset + 0] + (report[offset + 1] << 8)
@@ -69,78 +94,167 @@ def decode_u41(report):
         z = report[offset]
 
         if target_status & (1 << t) != 0:
-            print("(T{0}: {1:>5},{2:>5},{3:>4}) ".format(t, x, y, z), end='')
+            report_string += "(T{0}: {1:>5},{2:>5},{3:>4}) ".format(t, x, y, z)
         elif target_status != 0:
-            print("                       ", end='')
+            report_string += "                       "
 
-    if target_status != 0:
-        print("")
+    # Only log the report if there was something to report
+    if target_status != 0 or extra_info != 0:
+        report_logger.info(report_string, extra={'usage': 0x41})
 
-    timestamp = report[52] + (report[53] << 8)
-    checksum  = report[54] + (report[55] << 8)
+def decode_u01(report_logger, report):
+    """
+    Basic decoding of the u01 System manager report.
+    """
+    report_types = ["Hello", "Heartbeat", "Alert", "Opcomplete"]
+    type = report[0]
+    count = report[2] + (report[3] << 8)
+    timestamp = report[42] + (report[43] << 8)
+    report_logger.info("u01 {0:>5} {1} {2}".format(timestamp, report_types[type], count), extra={'usage': 0x01})
 
-    #print(str(timestamp))
+def gpio_interrupt(channel, comms, report_logger, u34_ta, u34_max_report_length):
+    """
+    For systems that support GPIO interrupts, like a RPi, this callback will be called
+    when an IRQ signal from aXiom is recieved. It will read the u34 Report FIFO buffer
+    and then process the report contents.
+    """
+    decode_and_process_report(comms.read_page(u34_ta, u34_max_report_length), report_logger)
 
-def decode_u01(report):
-    #print "Heartbeat Report"
-    #print(" ".join("{:02x}".format(num) for num in report))
-    pass
+def main_loop_polled(comms, report_logger, u34_ta, u34_max_report_length):
+    """
+    In polled mode, read u34 often to get any new reports. If no report is available,
+    then the reponse will be discarded. This will continue indefinitly, until the
+    SIGINT is signalled by the user. It will then return from here and safely
+    disconnect from the device.
+    """
+    global keyboard_signal_interrupt_requested
 
-def decode_u4C(report):
-    #print("u4C Report")
-    #print(" ".join("{:02x}".format(num) for num in report))
-    pass
+    while keyboard_signal_interrupt_requested == False:
+        # Poll for reports (not great, but the best we can do without an
+        # interrupt from nIRQ). Extract the report, and remove the first 2
+        # bytes and send it onto a function to decode accordingly
+        decode_and_process_report(comms.read_page(u34_ta, u34_max_report_length), report_logger)
+        time.sleep(0.001)
 
-def main_loop_polled(comms):
-    try:
-        while True:
-            # Poll for reports (not great, but the best we can do without an
-            # interrupt from nIRQ). Extract the report, and remove the first 2
-            # bytes and send it onto a function to decode accordingly
-            # TODO: Read out u34 TA and max report length
-            decode_and_process_report(comms.read_page(U34_TARGET_ADDRESS, U34_READ_LENGTH))
+def main_loop_interrupts(comms, report_logger, u34_ta, u34_max_report_length):
+    """
+    In interrupt mode, a GPIO is designated as an interrupt generator. This is configured
+    for a RPi device and will require adjusting for any other system.
+    Pin used for the interrupt is the GPIO/BCM pin 24, see: https://pinout.xyz/pinout/pin18_gpio24/
+    When an interrupt occurs, the callback will be triggered which will read the report from
+    aXiom and then the report will be processed.
 
-    except KeyboardInterrupt:
-        # Attempt to exit safely
-        ax.close()
-        sys.exit(0)
+    The while loop will stay here forever until the SIGINT is signaled by the user. Once SIGINT has
+    been recieved, it will gracefully cleanup the GPIO before safely disconnecting from the device.
+    """
+    global keyboard_signal_interrupt_requested
 
-def main_loop_interrupts():
-    try:
-        while True:
-            # Do nothing.... wait for CTRL+C
-            pass
-    except KeyboardInterrupt:
-        pass
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(24, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    gpio_interrupt_callback = partial(gpio_interrupt, comms=comms, report_logger=report_logger, u34_ta=u34_ta, u34_max_report_length=u34_max_report_length)
+    GPIO.add_event_detect(24, GPIO.FALLING, callback=gpio_interrupt_callback, bouncetime=1)
+
+    while keyboard_signal_interrupt_requested == False:
+        time.sleep(0.001)
 
     GPIO.cleanup()
-    ax.close()
-    sys.exit(0)
+
+def configureReportLogger(report_filter):
+    """
+    Create a logger with a custom filter to decide which reports will be printed on the console/logs
+    """
+    logger = logging.getLogger("aXiom Report Logger")
+    logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler()
+    logger.addHandler(handler)
+    logger.addFilter(report_filter)
+    return logger
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Utility to load aXiom config files onto a device')
-    parser.add_argument("-i", help='Comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True, type=str)
-    parser.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', required=False, type=int)
-    parser.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR', required=False, type=str)
-    parser.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', required=False, type=int)
-    parser.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', required=False, type=int)
-    parser.add_argument("--gpioint", help='RPi only. If not specified, the reports will be polled, otherwise a GPIO interrupt will be used instead', required=False, action='count', default=0)
+    # Create argument parser
+    parser = argparse.ArgumentParser(
+        description='Utility read reports from aXiom',
+        epilog='''
+Usage examples:
+    python %(prog)s -i usb
+    python %(prog)s -i usb --reports 0x41
+    python %(prog)s -i i2c --i2c-bus 1 --i2c-address 0x67
+    python %(prog)s -i spi --spi-bus 0 --spi-device 0 --reports 0x01
+
+    On RPi for interrupt driven report reads:
+    python %(prog)s -i spi --spi-bus 0 --spi-device 0 --gpioint 24
+    python %(prog)s -i spi --spi-bus 0 --spi-device 0 --gpioint 24 --reports 0x41
+
+Press Ctrl+C at any time to safely exit the script.
+
+Exit status codes:
+    0 : Success
+    2 : Script argument syntax issue. See --help
+''', formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    # Create argument groups
+    interface_group = parser.add_argument_group('Interface Options')
+    config_group = parser.add_argument_group('Configuration Options')
+
+    # Add arguments to their respective groups
+    interface_group.add_argument("-i", "--interface", help='Comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True)
+    interface_group.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', type=int)
+    interface_group.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR')
+    interface_group.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', type=int)
+    interface_group.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', type=int)
+    
+    config_group.add_argument("--gpioint", help='RPi only. Specified the GPIO pin to use as aXiom IRQ interrupt. If not specified, reports will be polled', required=False, action='count', default=None)
+    config_group.add_argument("--reports", nargs='+', type=arg_hex_type, help='List of reports to enable, e.g., --reports 0x41 0x81 0x46', required=False, default=[0x01, 0x41])
+
     args = parser.parse_args()
+    
+    if args.interface == "i2c":
+        if (args.i2c_bus is None or args.i2c_address is None):
+            parser.error("The --i2c-bus and --i2c-address arguments are required when using the I2C interface.")
 
-    ax, comms = axiom_init(args)
+        from axiom_tc.I2C_Comms import I2C_Comms
+        comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
 
-    # Check to see if we are going to be polling for report or using a GPIO interrupt
-    if args.gpioint > 0:
-        import RPi.GPIO as GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(24, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.add_event_detect(24, GPIO.FALLING, callback=gpio_interrupt, bouncetime=1)
+    if args.interface == "spi":
+        if (args.spi_bus is None or args.spi_device is None):
+            parser.error("The --spi-bus and --spi-device arguments are required when using the SPI interface.")
 
-    if args.gpioint > 0:
-        main_loop_interrupts()
+        from axiom_tc.SPI_Comms import SPI_Comms
+        comms = SPI_Comms(args.spi_bus, args.spi_device)
+
+    if args.interface == "usb":
+        from axiom_tc.USB_Comms import USB_Comms
+        comms = USB_Comms()
+
+    # Create a customer logging filter for the reports so that they can be individually enabled/disabled
+    report_filter = AxiomReportLoggingFilter()
+    report_logger = configureReportLogger(report_filter)
+
+    # Only logs the reports that have been enabled via the script's arguments.
+    for report in args.reports:
+        report_filter.updateFilter(report, True)
+
+    # The main part of this code is going to sit in a while(1) loop. Pressing CTRL+C is the only way
+    # to terminate the script. However, the connection to aXiom should be safely severed. Register a
+    # custom SIGINT handler to set a flag that will allow the while(1) loops to exit at a convient
+    # point and close the connection.
+    signal.signal(signal.SIGINT, custom_signal_handler)
+
+    # Initialise comms with axiom 
+    axiom = axiom(comms)
+
+    u34_ta = axiom.u31.convert_usage_to_target_address(0x34)
+    u34_max_report_length = axiom.u31.max_report_len
+
+    # Dummy read to purge anything left in the u34 FIFO buffer
+    comms.read_page(u34_ta, u34_max_report_length)
+
+    print("Press Ctrl+C at any time to safely exit the script.")
+
+    if args.gpioint is not None:
+        main_loop_interrupts(comms, report_logger, u34_ta, u34_max_report_length)
     else:
-        main_loop_polled(comms)
+        main_loop_polled(comms, report_logger, u34_ta, u34_max_report_length)
 
-    # Finally, close the connection if it is still open
-    ax.close()
-    sys.exit(0)
+    axiom.close()
