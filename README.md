@@ -172,3 +172,6 @@ The `axutils` scripts are meant to be used on a system running. However, dependi
 Windows requires the `hidapi.dll` files to reside in the same directory as python (see more info [here](https://github.com/abcminiuser/python-elgato-streamdeck/issues/56))
 The `.dll` files can be found [here](https://github.com/libusb/hidapi/releases)
 
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
