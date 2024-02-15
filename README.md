@@ -121,7 +121,7 @@ This table describes the meta data stored in the header section of the `.axfw` f
 | Byte(s) | Description             | Notes                                                 |
 | :---:   | :----                   | :---                                                  |
 | 0-3     | File Signature          | ASCII `'AXFW'`                                        |
-| 4-7     | .axfw CRC               | CRC of the entire firmware file (including metadata)  |
+| 4-7     | .axfw CRC               | CRC32 value of the .axfw file from offset 8 onwards   |
 | 8-9     | File Format Version     | Little Endian                                         |
 | 10-11   | Device ID               | Little Endian, see list of Device IDs below           |
 | 12      | Firmware Variant        | See list of Firmware Variants below                   |
