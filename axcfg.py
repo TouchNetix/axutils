@@ -24,9 +24,9 @@ def extract_usages_from_config_file(config_file):
     usages = {}
 
     try:
+        all_usages_size = os.path.getsize(config_file)
+        
         with open(config_file, "rb") as file:
-            all_usages_size = os.path.getsize(config_file)
-
             # The first 4 bytes of the file contains a signature that we use to
             # identify the file as an aXiom config file.
             signature = struct.unpack(">I", file.read(4))[0]
