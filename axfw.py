@@ -13,10 +13,6 @@ from version import __version__
 from axiom_tc import axiom
 from axiom_tc import u33_CRCData
 
-# status codes
-STATUS_SUCCESS = 0
-INVALID_PARAMETER = 1
-
 def show_progress(current, total):
     progress = (float(current) / float(total)) * 100
     sys.stdout.write('\033[?25l') # Hide cursor
@@ -195,7 +191,7 @@ Usage examples:
 Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
-    3 : File is not an .axfw or .alc file
+    3 : File is not an .axfw or .alc file, or no file specified
     4 : Failed to get the aXiom device to enter bootloader mode
     5 : The .axfw file was not valid
     6 : The .axfw is for a different aXiom device
@@ -268,7 +264,10 @@ Exit status codes:
             print("INFO: Cannot compare an .alc file")
             return_code = 0
     else:
-        if args.file is not None and not args.file.endswith(("axfw", "alc")):
+        if args.file is None:
+            return_code = 3
+            print("ERROR: No firmware file specified")
+        elif args.file is not None and not args.file.endswith(("axfw", "alc")):
             return_code = 3
             print("ERROR: Invalid file extension")
         elif args.file.endswith("axfw"):
