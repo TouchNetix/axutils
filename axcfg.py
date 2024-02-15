@@ -89,12 +89,14 @@ def axcfg(axiom, config_file, overwrite_u04):
     # Only proceed if the CRCs match.
     if u33_from_file.reg_runtime_crc != u33.reg_runtime_crc:
         print("ERROR: Cannot load config file as it was saved from a different revision of firmware.")
-        print("       Firmware info from device      : 0x{0:08X}, {1}".format(u33.reg_runtime_crc, axiom.u31.get_device_info_short()))
-        print("       Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc, u31_from_file.get_device_info_short()))
+        print("Firmware info from device      : 0x{0:08X}, {1}".format(u33.reg_runtime_crc, axiom.u31.get_device_info_short()))
+        print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc, u31_from_file.get_device_info_short()))
         return 3
 
-    # Stop axiom from performing measurements whilst loading the config file
+    # Stop axiom from performing measurements whilst loading the config file. Zero out
+    # the config for good measure.
     axiom.u02.send_command(axiom.u02.CMD_STOP)
+    axiom.u02.send_command(axiom.u02.CMD_FILL_CONFIG)
 
     # Write the config to the device by iterating over all the usages from the config file
     bytes_written = 0
