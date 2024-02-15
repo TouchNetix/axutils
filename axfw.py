@@ -105,16 +105,16 @@ def axfw_check_file_and_validate_parameters(axiom, firmware_file):
         print(f"ERROR: The .axfw file is for a different device. Device: {u31_device_str}, File: {device_id_str}")
         return 6, None
     
+    if u31_fw_variant != file_fw_variant:
+        return 8, file_fw_crc
+
     # Compare the firmware information to prevent any unnecessary downloads. The --force
     # option can override this and still perform the download
     if (u31_fw_major   == file_fw_ver_major and
         u31_fw_minor   == file_fw_ver_minor and
         u31_fw_patch   == file_fw_ver_patch and
         u31_fw_status  == file_fw_status):
-        if u31_fw_variant == file_fw_variant:
             return 7, file_fw_crc
-        else:
-            return 8, file_fw_crc
     
     # File is OK and valid to be loaded onto the aXiom device
     return 0, file_fw_crc
@@ -250,7 +250,9 @@ Exit status codes:
     # then show the contents of the firmware file. The same cannot be done with .alc
     # files.
     if args.info:
-        if args.file is not None and not args.file.endswith(("axfw", "alc")):
+        if args.file is None:
+            pass # Nothing to do
+        elif args.file is not None and not args.file.endswith(("axfw", "alc")):
             print("ERROR: Unknown filetype")
             return_code = 3
         elif args.file.endswith("axfw"):
@@ -271,7 +273,6 @@ Exit status codes:
             return_code = 3
             print("ERROR: Invalid file extension")
         elif args.file.endswith("axfw"):
-            # axfw download
             return_code, fw_crc = axfw_check_file_and_validate_parameters(axiom, args.file)
             if return_code == 0 or (return_code in [7, 8] and args.force):
                 return_code = axfw_download(axiom, args.file)
