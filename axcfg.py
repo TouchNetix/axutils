@@ -8,6 +8,7 @@ import sys
 import struct
 import argparse
 from time import sleep
+from version import __version__
 from axiom_tc import axiom
 from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
@@ -149,6 +150,8 @@ Exit status codes:
     3 : Config file not compatible with firmware on the device
     4 : Config file does not match the device's config
 ''', formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
 
     # Create argument groups
     interface_group = parser.add_argument_group('Interface Options')

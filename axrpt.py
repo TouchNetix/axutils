@@ -8,6 +8,7 @@ import argparse
 import logging
 import signal
 from functools import partial
+from version import __version__
 from axiom_tc import axiom
 
 keyboard_signal_interrupt_requested = False
@@ -198,6 +199,8 @@ Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
 ''', formatter_class=argparse.RawDescriptionHelpFormatter)
+    
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
 
     # Create argument groups
     interface_group = parser.add_argument_group('Interface Options')

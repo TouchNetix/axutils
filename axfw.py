@@ -9,6 +9,7 @@ import struct
 import argparse
 import binascii
 from time import sleep
+from version import __version__
 from axiom_tc import axiom
 from axiom_tc import u33_CRCData
 
@@ -202,6 +203,8 @@ Exit status codes:
     8 : The .axfw firmware variant is different from the firmware on the aXiom device
     9 : The firmware CRC check failed after the download was completed
 ''', formatter_class=argparse.RawDescriptionHelpFormatter)
+    
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
 
     # Create argument groups
     interface_group = parser.add_argument_group('Interface Options')

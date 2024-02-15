@@ -4,6 +4,7 @@
 # See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
 import argparse
+from version import __version__
 from axiom_tc import axiom
 
 if __name__ == '__main__':
@@ -21,6 +22,8 @@ Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
 ''', formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
 
     # Create argument groups
     interface_group = parser.add_argument_group('Interface Options')

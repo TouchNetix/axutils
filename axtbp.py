@@ -4,6 +4,7 @@
 # See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
 import argparse
+from version import __version__
 from axiom_tc.USB_Comms import USB_Comms
 
 BridgeMode_TBPBasic = 0
@@ -26,11 +27,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=description_string)
     parser.add_argument("-m", help=help_string, choices=TBP_MODES.keys(), \
                         required=False, default='', type=str)
-    parser.add_argument("-v", help='Print verbose messages', action="store_true")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
-    verbose = args.v
 
-    comms = USB_Comms(verbose)
+    comms = USB_Comms()
     print("Current TNx USB Bridge mode: " + TBP_MODE_PID[comms.pid])
     current_mode = TBP_MODES[TBP_MODE_PID[comms.pid]]
 
