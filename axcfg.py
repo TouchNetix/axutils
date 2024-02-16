@@ -93,10 +93,15 @@ def axcfg(axiom, config_file, overwrite_u04):
         print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc, u31_from_file.get_device_info_short()))
         return 3
 
-    # Stop axiom from performing measurements whilst loading the config file. Zero out
-    # the config for good measure.
+    # Stop axiom from performing measurements whilst loading the config file.
     axiom.u02.send_command(axiom.u02.CMD_STOP)
+
+    # Zero out the config for good measure, this is mostly useful when switching between firmware variants. However, this
+    # will also affect u04. Cache u04, fill the config and write u04 back. u04 contains data that a customer would have
+    # written to the device. If may get overwritten later based on the config file and the script arguments.
+    u04 = axiom.read_usage(0x04)
     axiom.u02.send_command(axiom.u02.CMD_FILL_CONFIG)
+    axiom.write_usage(0x04, u04)
 
     # Write the config to the device by iterating over all the usages from the config file
     bytes_written = 0
