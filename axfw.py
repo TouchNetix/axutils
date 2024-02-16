@@ -277,7 +277,7 @@ Exit status codes:
             if return_code == 0 or (return_code in [7, 8] and args.force):
                 return_code = axfw_download(axiom, args.file)
                 if return_code == 0:
-                    axiom.u31.read()
+                    axiom.u31.build_usage_table()
                     print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
                     u33 = u33_CRCData(axiom)
                     if u33.reg_runtime_nvm_crc != fw_crc:
@@ -293,7 +293,7 @@ Exit status codes:
             # Must be alc download
             return_code = alc_download(axiom, args.file)
             if return_code == 0:
-                axiom.u31.read()
+                axiom.u31.build_usage_table()
                 print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
 
     # Safely close the connection to aXiom and set the exit code
