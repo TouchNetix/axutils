@@ -1,28 +1,7 @@
-#!/usr/bin/env python3
-################################################################################
-#                                    NOTICE
-#
-# Copyright (c) 2010 - 2020 TouchNetix Limited
-# ALL RIGHTS RESERVED.
-#
-# The source  code contained  or described herein  and all documents  related to
-# the source code ("Material") are owned by TouchNetix Limited ("TouchNetix") or
-# its suppliers  or licensors. Title to the Material  remains with TouchNetix or
-# its   suppliers  and  licensors. The  Material  contains  trade  secrets   and
-# proprietary  and confidential information  of TouchNetix or its  suppliers and
-# licensors.  The  Material  is  protected  by  worldwide  copyright  and  trade
-# secret  laws and  treaty  provisions.  No part  of the Material  may be  used,
-# copied,  reproduced,  modified,   published,  uploaded,  posted,  transmitted,
-# distributed or disclosed in any way without TouchNetix's prior express written
-# permission.
-#
-# No  license under any  patent, copyright,  trade secret or other  intellectual
-# property  right is granted to or conferred upon you by disclosure or  delivery
-# of  the Materials, either  expressly, by implication, inducement, estoppel  or
-# otherwise.  Any  license  under  such  intellectual  property rights  must  be
-# expressly approved by TouchNetix in writing.
-#
-################################################################################
+# Copyright (c) 2024 TouchNetix
+# 
+# This file is part of [Project Name] and is released under the MIT License: 
+# See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
 import os
 import sys
@@ -30,306 +9,293 @@ import struct
 import argparse
 import binascii
 from time import sleep
+from version import __version__
 from axiom_tc import axiom
 from axiom_tc import u33_CRCData
 
-# status codes
-STATUS_SUCCESS = 0
-INVALID_PARAMETER = -1
+def show_progress(current, total):
+    progress = (float(current) / float(total)) * 100
+    sys.stdout.write('\033[?25l') # Hide cursor
+    sys.stdout.write("Progress: %3.0f%%\r" % (progress))
+    sys.stdout.flush()
+    sys.stdout.write('\033[?25h') # Show cursor
 
-def axiom_init(args, verbose=False):
-    if args.i == "i2c":
-        if args.i2c_bus == None or args.i2c_address == None:
-            print("The I2C bus and the I2C address arguments need to be specified.")
-            parser.print_help()
-            sys.exit(-1)
-        else:
-            from axiom_tc.I2C_Comms import I2C_Comms
-            comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
+def get_axfw_file_crc(firmware_file):
+    """
+    The .axfw file contains a CRC value that is used to validate the contents of
+    firmware file. This function returns the calculated .axfw file CRC.
+    """
+    file_size = os.path.getsize(firmware_file)
+    with open(firmware_file, 'rb') as file:
+        # Data to do the CRC calculation starts at byte 8 in the .axfw file
+        file.seek(8)
+        axfw_file = file.read((file_size - 8))
+        crc = binascii.crc32(axfw_file, 0)
+    return crc
 
-    elif args.i == "spi":
-        if args.spi_bus == None or args.spi_device == None:
-            print("The SPI bus and the SPI device arguments need to be specified.")
-            parser.print_help()
-            sys.exit(-1)
-        else:
-            from axiom_tc.SPI_Comms import SPI_Comms
-            comms = SPI_Comms(args.spi_bus, args.spi_device)
+def axfw_get_fw_info_from_file(firmware_file):
+    """
+    Extracts the firmware information from the .axfw file and provides some basic
+    validation of the header.
 
-    elif args.i == "usb":
-        from axiom_tc.USB_Comms import USB_Comms
-        comms = USB_Comms(verbose)
-
-    return axiom(comms, verbose=verbose)
-
-# this function retrieves the header information (first 16 bytes) 
-# returns a status code indicating whether retrieving the header was a success or not
-# returns the header information
-def get_axfw_header(firmware_file):
-
-    status = STATUS_SUCCESS
-    if not firmware_file.endswith(".axfw"):
-        print("Invalid file type provided")
-        status = INVALID_PARAMETER
-
-    if status == STATUS_SUCCESS:
-        with open(firmware_file, "rb") as file:
-            file.seek(0)
-            axfw_header = list(struct.unpack(">24B", file.read(24)))
-            status = STATUS_SUCCESS
-    else:
-        axfw_header = INVALID_PARAMETER
-        status = INVALID_PARAMETER
-
-    return status, axfw_header
-        
-# this function prints out the information about the device the .axfw file was generated for
-# returns the status code from the get header function indicating whether or not the header is valid
-def print_axfw_header_info(firmware_file):
-
-    status, axfw_header = get_axfw_header(firmware_file)
-    if status == STATUS_SUCCESS:
-        device_id = axfw_header[10] + axfw_header[11]
-        build_variant_int = axfw_header[12]
-        fw_version_major = axfw_header[14]
-        fw_version_minor = axfw_header[13]
-        patch_number = axfw_header[15]
-        silicon_id_minor = axfw_header[17]
-        silicon_revision = axfw_header[19]
-
-        print("  Device ID   : AX%u%c " % (device_id, chr(0x41 + build_variant_int)))
-        print("  FW Revision : %d.%d.%d" % ( fw_version_major, fw_version_minor, patch_number))
-        print("  Silicon     : 0x%04X (Rev %c)" % (silicon_id_minor, chr(0x41 + silicon_revision)))
-        print("")
-
-    else:
-        print("Unable to retrieve .axfw file header information")
-
-    return status
-
-# this function checks the header information and ensures that the contents of the header are valid
-# returns a status code which indicates if the information inside the header file is correct
-def axfw_check_file_and_validate_parameters(device_info, firmware_file):
-
-    status = STATUS_SUCCESS
-
-    get_header_status, axfw_header = get_axfw_header(firmware_file)
-    if get_header_status == STATUS_SUCCESS:
-        signature = chr(axfw_header[0]) + chr(axfw_header[1]) + chr(axfw_header[2]) + chr(axfw_header[3])
-        axfw_crc_struct = [axfw_header[4], axfw_header[5], axfw_header[6], axfw_header[7]]
-        axfw_crc_bytes = bytes(bytearray(axfw_crc_struct))
-        axfw_crc = int.from_bytes(axfw_crc_bytes, 'little')
-        file_format_version_minor = axfw_header[8]
-        file_format_version_major = axfw_header[9]
-        new_device_id = axfw_header[10] + axfw_header[11]
-        new_fw_version_major = axfw_header[14]
-        new_fw_version_minor = axfw_header[13]
-        new_patch_number = axfw_header[15]
-
-        if signature != "AXFW":
-            print("Invalid device signature")
-            status = INVALID_PARAMETER
-
-        if (file_format_version_minor != 0) and (file_format_version_major != 2):
-            print("Unsupported axfw file version, expected v2.00 but got v%d.%02d" % (file_format_version_major, file_format_version_minor))
-            status = INVALID_PARAMETER
-
-        original_device_id            = ((device_info[1] & 0x7f) << 8) + device_info[0]
-        original_device_channel_count = original_device_id & 0x3FF
-
-        original_fw_ver_major = int(device_info[3])
-        original_fw_ver_minor = int(device_info[2])
-        original_fw_ver_rc    = (device_info[11] & 0xf0) >> 4
-
-        with open(firmware_file, 'rb') as temp_file_handle:
-            # seed of the crc is 0
-            crc32_value = 0
-            file_size = os.path.getsize(firmware_file)
-            temp_file_handle.seek(8) # skip over the first 8 bytes as this contains the file signature which is not part of the crc, and the crc itself
-            axfw_file = temp_file_handle.read((file_size - 8))
-            calculated_axfw_crc = binascii.crc32(axfw_file, crc32_value)
-
-        if axfw_crc != calculated_axfw_crc:
-            status = INVALID_PARAMETER
-            print("CRCs do not match")
-
-        if original_device_channel_count != new_device_id:
-            print("Device ID mismatch")
-            if force_download != True:
-                status = INVALID_PARAMETER
-        if(new_fw_version_major == original_fw_ver_major) and (new_fw_version_minor == original_fw_ver_minor) and (new_patch_number == original_fw_ver_rc):
-            print("Device Firmware Version already on Device")
-            if(force_download != True):
-                status = INVALID_PARAMETER
-    else:
-        status = INVALID_PARAMETER
-        print("Unable to check .axfw header and validate parameters")
-    return status
-
-def validate_runtime_crc(axiom, firmware_file):
-    u33 = u33_CRCData(axiom)
-    u33.read()
-    runtime_nvm_crc = u33.reg_runtime_crc
-    _, axfw_header = get_axfw_header(firmware_file)
-    stored_nvm_crc_struct = axfw_header[20], axfw_header[21], axfw_header[22], axfw_header[23]
-    stored_nvm_crc_bytes = bytes(bytearray(stored_nvm_crc_struct))
-    stored_nvm_crc = int.from_bytes(stored_nvm_crc_bytes, 'little')
-
-    if runtime_nvm_crc != stored_nvm_crc:
-        print("Runtime CRC do not match")
-
-# this function opens the .axfw file and performs the download starting from the end of the axfw header
-def axfw_download(axiom, firmware_file):
-    # Open the firmware file and parse it into chunks.
+    Returns:
+        5 : .axfw file is invalid. E.g. failed signature check or CRC mismatch
+        0, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, fw_crc
+    """
     with open(firmware_file, "rb") as file:
+        signature, axfw_crc, axfw_format_ver = list(struct.unpack("<2IH", file.read(10)))
 
-        # Seek to the end of the file to determine how long the file is.
-        file.seek(0, os.SEEK_END)
-        eof_pos = file.tell()
+        # Validate the signature, file format and file CRC values before decoding the 
+        # rest of the file
+        if struct.pack("<I", signature).decode() != 'AXFW':
+            print("ERROR: Invalid .axfw signature")
+            return 5
+        
+        if axfw_format_ver != 0x0200:
+            print("ERROR: Unknown .axfw format verion")
+            return 5
+        
+        axfw_crc_calculated = get_axfw_file_crc(firmware_file)
+        if axfw_crc != axfw_crc_calculated:
+            print("ERROR: The .axfw CRC was invalid")
+            return 5
+        
+        device_id, fw_variant, fw_ver_minor, fw_ver_major, fw_ver_patch, fw_status = list(struct.unpack("<H5B", file.read(7)))
+        _, _, fw_crc = list(struct.unpack("<HBI", file.read(7)))
 
-        # header is 24 bytes long, start of actual firmware is at byte no. 24
-        file.seek(24)
+    return 0, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, fw_crc
 
-        # Iterate through the file, identifying the different chunks.
-        while True:
-            chunk_header = list(struct.unpack(">8B", file.read(8)))
-            chunk_length = (chunk_header[6] << 8) + (chunk_header[7])
-            if verbose: 
-                print("chunk_length is %d bytes" % chunk_length)
-            chunk_payload = list(struct.unpack(">"+str(chunk_length)+"B", file.read(chunk_length)))
+def axfw_check_file_and_validate_parameters(axiom, firmware_file):
+    """
+    Validates the .axfw file before attempting a download.
 
-            # Send the chunk to be downloaded, the aXiom core code will further
-            # segment the chunk into smaller payloads to be sent to aXiom.
-            axiom.bootloader_write_chunk(chunk_header, chunk_payload)
+    Returns:
+        0 : File is valid, compatible with the device and can be loaded
+        5 : .axfw file is invalid. E.g. failed signature check or CRC mismatch
+        6 : The .axfw is intended for a different aXiom device
+        7 : The .axfw firmware is already on the device
+        8 : The firmware variant in the .axfw does not match the device's firmware variant
 
-            # Report current progress of the donwload
-            progress = (float(file.tell()) / float(eof_pos)) * 100
-            if not verbose:
-                sys.stdout.write("Progress: %3.0f%%\r" % (progress))
-                sys.stdout.flush()
-            # Check if the end of file has been reached
-            if file.tell() == eof_pos:
-                print("")
-                break
+        firmware_crc : The CRC of the firmware in the file to be used for comparrison after the download completes
+    """
+
+    # Get some of the u31 registers are these are going to be used shortly as part
+    # of the validation process.
+    u31_device_id  = axiom.u31.reg_device_id
+    u31_fw_major   = axiom.u31.reg_fw_major
+    u31_fw_minor   = axiom.u31.reg_fw_minor
+    u31_fw_patch   = axiom.u31.reg_fw_patch
+    u31_fw_variant = axiom.u31.reg_fw_variant
+    u31_fw_status  = axiom.u31.reg_fw_status
+
+    # Get the firmware information from the .axfw file
+    (return_code, file_device_id, file_fw_variant,
+     file_fw_ver_major, file_fw_ver_minor, file_fw_ver_patch,
+     file_fw_status, file_fw_crc) = axfw_get_fw_info_from_file(firmware_file)
+
+    # If the .axfw file is not valid, exit now
+    if return_code != 0:
+        return return_code, None
+    
+    # Compare the device ID from the device and the .axfw file. This returns a different
+    # code as this is not something that the --force option can overcome.
+    if u31_device_id != file_device_id:
+        u31_device_str = axiom.u31.convert_device_id_to_string(u31_device_id)
+        device_id_str  = axiom.u31.convert_device_id_to_string(file_device_id)
+        print(f"ERROR: The .axfw file is for a different device. Device: {u31_device_str}, File: {device_id_str}")
+        return 6, None
+    
+    if u31_fw_variant != file_fw_variant:
+        return 8, file_fw_crc
+
+    # Compare the firmware information to prevent any unnecessary downloads. The --force
+    # option can override this and still perform the download
+    if (u31_fw_major   == file_fw_ver_major and
+        u31_fw_minor   == file_fw_ver_minor and
+        u31_fw_patch   == file_fw_ver_patch and
+        u31_fw_status  == file_fw_status):
+            return 7, file_fw_crc
+    
+    # File is OK and valid to be loaded onto the aXiom device
+    return 0, file_fw_crc
+
+def axfw_download(axiom, firmware_file):
+    """
+    .axfw file downloads are pretty much exactly the same as the .alc downloads. The .axfw
+    files have additional header information that can be used to identify the contents of
+    a file and prevent any unnecessary downloads. Essentially, within each .axfw is an
+    .alc file.
+    """
+    return alc_download(axiom, firmware_file)
 
 # this functions opens the .alc file and performs the download from the beginning of the file 
-def alc_download(firmware_file):
-    # Open the firmware file and parse it into chunks.
+def alc_download(axiom, firmware_file):
+    """
+    Download the file onto the device. If the firmware file is an .alc file, the firmware is
+    at the start of the file. If the firmware file is an .axfw, skip past the header bytes.
+    If an .axfw file is specified, it is assumed that all the validation and verification
+    checks have already been done (see axfw_check_file_and_validate_parameters()).
+    """
+    if firmware_file.endswith("alc"):
+        firmware_start_offset = 0
+    else:
+        firmware_start_offset = 24
+
+    # Before the download can start, the aXiom device needs to be in bootloader mode
+    if not axiom.enter_bootloader_mode():
+        print("Error: Failed to enter bootloader mode.")
+        return 4
+
+    file_size = os.path.getsize(firmware_file)
     with open(firmware_file, "rb") as file:
+        # Seek to the position in the file where the firmware starts
+        file.seek(firmware_start_offset)
 
-        # Seek to the end of the file to determine how long the file is.
-        file.seek(0, os.SEEK_END)
-        eof_pos = file.tell()
-
-        # Return back to the start of the file
-        file.seek(0)
-
-        # Iterate through the file, identifying the different chunks.
         while True:
+            # Extract all the "chunks" from the firmware file
             chunk_header = list(struct.unpack(">8B", file.read(8)))
             chunk_length = (chunk_header[6] << 8) + (chunk_header[7])
-            if verbose: 
-                print("chunk_length is %d bytes" % chunk_length)
             chunk_payload = list(struct.unpack(">"+str(chunk_length)+"B", file.read(chunk_length)))
 
             # Send the chunk to be downloaded, the aXiom core code will further
             # segment the chunk into smaller payloads to be sent to aXiom.
             axiom.bootloader_write_chunk(chunk_header, chunk_payload)
 
-            # Report current progress of the donwload
-            progress = (float(file.tell()) / float(eof_pos)) * 100
-            if not verbose:
-                sys.stdout.write("Progress: %3.0f%%\r" % (progress))
-                sys.stdout.flush()
-            # Check if the end of file has been reached
-            if file.tell() == eof_pos:
-                print("")
+            show_progress(file.tell(), file_size)
+
+            # Has all the firmware chunks been sent the device?
+            if file.tell() == file_size:
                 break
+    
+    print("")
+
+    # Reset the aXiom bootloader so that the new firmware is active.
+    axiom.bootloader_reset_axiom()
+    sleep(2)
+    return 0
 
 if __name__ == '__main__':
-    exit_code = 0
-    parser = argparse.ArgumentParser(description='Utility to update aXiom firmware')
-    parser.add_argument("-f", help='aXiom firmware file (.alc or .axfw format)', metavar='FIRMWARE_FILE', required=False, type=str, default='')
-    parser.add_argument("-i", help='Comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True, type=str)
-    parser.add_argument("-v", help='Print verbose messages', action="store_true")
-    parser.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', required=False, type=int)
-    parser.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', required=False, type=int)
-    parser.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', required=False, type=int)
-    parser.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR', required=False, type=str)
-    parser.add_argument("-force", help='Force the firmware to download even if there is a metadata warning, .axfw file only.', action="store_true", required=False)
-    parser.add_argument("-info", help='Print information about the connected device and the firmware file provided, .axfw file only.', action="store_true", required=False)
+    # Create argument parser
+    parser = argparse.ArgumentParser(
+        description='Utility to update aXiom firmware',
+        epilog='''
+Usage examples:
+    python %(prog)s -i usb -f ax80a_3D_rt_r040807_prod.axfw
+    python %(prog)s -i usb -f ax80a_3D_rt_r040807_prod.alc
+    python %(prog)s -i i2c --i2c-bus 1 --i2c-address 0x67 -f ax80a_3D_rt_r040807_prod.axfw
+    python %(prog)s -i spi --spi-bus 0 --spi-device 0 -f ax80a_3D_rt_r040807_prod.axfw
+    python %(prog)s -i usb -f ax80a_3D_rt_r040807_prod.axfw --info
+    python %(prog)s -i usb -f ax80a_3D_rt_r040807_prod.axfw --force
+    python %(prog)s -i usb --info
+
+Exit status codes:
+    0 : Success
+    2 : Script argument syntax issue. See --help
+    3 : File is not an .axfw or .alc file, or no file specified
+    4 : Failed to get the aXiom device to enter bootloader mode
+    5 : The .axfw file was not valid
+    6 : The .axfw is for a different aXiom device
+    7 : The firmware is already loaded onto the aXiom device
+    8 : The .axfw firmware variant is different from the firmware on the aXiom device
+    9 : The firmware CRC check failed after the download was completed
+''', formatter_class=argparse.RawDescriptionHelpFormatter)
+    
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
+
+    # Create argument groups
+    interface_group = parser.add_argument_group('Interface Options')
+    config_group = parser.add_argument_group('Configuration Options')
+
+    # Add arguments to their respective groups
+    interface_group.add_argument("-i", "--interface", help='Comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True)
+    interface_group.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', type=int)
+    interface_group.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR')
+    interface_group.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', type=int)
+    interface_group.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', type=int)
+
+    config_group.add_argument("-f", "--file", help='aXiom firmware file (.alc or .axfw format)', metavar='FIRMWARE_FILE')
+    config_group.add_argument("--info", help='Displays the firmware information of the connected aXiom device and the firmware files (.axfw only)', action="store_true")
+    config_group.add_argument("--force", help='Enforces firmware re-download regardless of current version (.axfw only)', action="store_true")
+
     args = parser.parse_args()
+    
+    if args.interface == "i2c":
+        if (args.i2c_bus is None or args.i2c_address is None):
+            parser.error("The --i2c-bus and --i2c-address arguments are required when using the I2C interface.")
 
-    verbose = args.v
-    force_download = args.force
-    print_device_and_axfw_information = args.info
+        from axiom_tc.I2C_Comms import I2C_Comms
+        comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
 
-    # Get the firmware file path from the arguments
-    firmware_file = args.f
-    if firmware_file.endswith(".axfw"):
-        file_type = "axfw"
-    elif firmware_file.endswith(".alc"):
-        file_type = "alc"
+    if args.interface == "spi":
+        if (args.spi_bus is None or args.spi_device is None):
+            parser.error("The --spi-bus and --spi-device arguments are required when using the SPI interface.")
+
+        from axiom_tc.SPI_Comms import SPI_Comms
+        comms = SPI_Comms(args.spi_bus, args.spi_device)
+
+    if args.interface == "usb":
+        from axiom_tc.USB_Comms import USB_Comms
+        comms = USB_Comms()
+
+    # Initialise comms with axiom 
+    axiom = axiom(comms)
+
+    return_code = 0
+
+    # Always show the firmware version of the device
+    print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
+
+    # If the --info option is specified, no download will occurr. If will show the
+    # version information of the attached device. If an .axfw file is also specified,
+    # then show the contents of the firmware file. The same cannot be done with .alc
+    # files.
+    if args.info:
+        if args.file is None:
+            pass # Nothing to do
+        elif args.file is not None and not args.file.endswith(("axfw", "alc")):
+            print("ERROR: Unknown filetype")
+            return_code = 3
+        elif args.file.endswith("axfw"):
+            return_code, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, _ = axfw_get_fw_info_from_file(args.file)
+            
+            if return_code == 0:
+                print("File FW Info   : {0}".format(axiom.u31.convert_device_info_to_string(device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status)))
+            else:
+                print("ERROR: Unknown .axfw file")
+        else:
+            print("INFO: Cannot compare an .alc file")
+            return_code = 0
     else:
-        print("ERROR: wrong file type, expecting .axfw or .alc")
-        sys.exit(-1)
-        
-    axiom = axiom_init(args, verbose)
+        if args.file is None:
+            return_code = 3
+            print("ERROR: No firmware file specified")
+        elif args.file is not None and not args.file.endswith(("axfw", "alc")):
+            return_code = 3
+            print("ERROR: Invalid file extension")
+        elif args.file.endswith("axfw"):
+            return_code, fw_crc = axfw_check_file_and_validate_parameters(axiom, args.file)
+            if return_code == 0 or (return_code in [7, 8] and args.force):
+                return_code = axfw_download(axiom, args.file)
+                if return_code == 0:
+                    axiom.u31.build_usage_table()
+                    print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
+                    u33 = u33_CRCData(axiom)
+                    if u33.reg_runtime_nvm_crc != fw_crc:
+                        print(f"ERROR: Firmware CRC check failed. Device: 0x{u33.reg_runtime_nvm_crc:08X}, File: 0x{fw_crc:08X}")
+                        return_code = 9
+            elif return_code == 5:
+                print("ERROR: Unknown .axfw file")
+            elif return_code == 7:
+                print("INFO: Skipping download, the same firmware is already on the device")
+            elif return_code == 8:
+                print("INFO: Skipping download, the firmware variant in the .axfw does not match the device")
+        else:
+            # Must be alc download
+            return_code = alc_download(axiom, args.file)
+            if return_code == 0:
+                axiom.u31.build_usage_table()
+                print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
 
-    # print device and .axfw information before starting any of the firmware download process
-    if print_device_and_axfw_information == True and file_type == "axfw":
-        print("Device Information")
-        axiom.print_device_info()
-        print("File Information")
-        status = print_axfw_header_info(firmware_file)
-        sys.exit(status)
-
-    try:
-        print("Device info before download:")
-        axiom.print_device_info()
-        u31_device_information = axiom.get_u31_device_info()
-    except:
-        print("WARNING: not able to print tables, trying to get into bootloader mode...")
-
-    if len(firmware_file) != 0:
-        # Instruct aXiom to enter bootloader mode
-        status = axiom.enter_bootloader_mode()
-        if status == False:
-            print("Error: Failed to enter bootloader mode.")
-            sys.exit(-1)
-
-    #perform firmware download for the filetype provided
-    if firmware_file.endswith(".axfw"):
-        file_valid = axfw_check_file_and_validate_parameters(u31_device_information, firmware_file)
-        if file_valid == STATUS_SUCCESS:
-            axfw_download(axiom, firmware_file)
-    elif firmware_file.endswith(".alc"):
-        alc_download(firmware_file)
-    else:
-        print("Invalid firmware filetype")
-        sys.exit(-1)
-
-    # Issue a reset to aXiom so that the new code will run. It is surrounded by
-    # a "try" as the low level comms may get upset as aXiom instantly the command
-    # is received. Fail gracefully.
-    try:
-        print("about to reset aXiom...")
-        axiom.bootloader_reset_axiom()
-        print("aXiom reset requested...")
-    except:
-        print("Warning: ignoring axiom reset request exception...")
-        pass
-
-    sleep(2)
-
-    print("")
-    print("Device info after download:")
-    axiom.print_device_info()
-
-    # The firmware CRC can be validated if a axfw file was used.
-    if firmware_file.endswith(".axfw"):
-        validate_runtime_crc(axiom, firmware_file)
-
-    # Safely close the connection to aXiom
+    # Safely close the connection to aXiom and set the exit code
     axiom.close()
-    sys.exit(exit_code)
+    sys.exit(return_code)
