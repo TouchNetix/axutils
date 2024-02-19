@@ -8,7 +8,7 @@ Reference code in this section is provided to demonstrate how small tools can be
 
 `axut` queries an aXiom device and reports firmware version information as well as the usage table.
 
-`axrpt` provides example code to read reports from aXiom in either a polled or interupt driven scheme. A Raspberry Pi is required for this interrupt driven example to function.
+`axrpt` provides example code to read reports from aXiom in either a polled or interrupt driven scheme. A Raspberry Pi is required for this interrupt driven example to function.
 
 `axfactdata` reads out the aXiom device's factory data.
 
@@ -20,7 +20,7 @@ Requires Python 3.8 to be installed and accessible on the Path variable.
 
 ### axiom_tc Package
 
-This is the aXiom touch controller python package that provides access to core functionality and communication to the aXiom device. In conjunction with the `axiom_tc` package, the appropiate interface packages are expected to be available. These are described after this section.
+This is the aXiom touch controller python package that provides access to core functionality and communication to the aXiom device. In conjunction with the `axiom_tc` package, the appropriate interface packages are expected to be available. These are described after this section.
 
 Requires `axiom_tc` to be installed and accessible to your Python interpreter.
 
@@ -60,7 +60,7 @@ See [hid](https://pypi.org/project/hid/) for more information.
 
 #### Linux
 
-Using the `hid` package will access the TouchNetix protocol bridges via the `/dev/hidrawX` interface. This typically requires root access. This means the scripts will need to be run as `sudo`. Alternativly, `udev` can be used to give all users permissions to the `hidraw` devices.
+Using the `hid` package will access the TouchNetix protocol bridges via the `/dev/hidrawX` interface. This typically requires root access. This means the scripts will need to be run as `sudo`. Alternatively, `udev` can be used to give all users permissions to the `hidraw` devices.
 
 Create the following `udev` rules file `/etc/udev/rules.d/99-axiom-hidraw-permissions.rules`:
 
@@ -78,7 +78,7 @@ SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="2f04", MODE="06
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="2f08", MODE="0666"
 ```
 
-The changes will apply on the next bootup. To apply the changes immediatly:
+The changes will apply on the next bootup. To apply the changes immediately:
 
 ```console
 sudo udevadm control --reload-rules
@@ -112,7 +112,7 @@ axfw.py --help
 
 There are two formats of the aXiom firmware files; `.axfw` and `.alc`. The `.axfw` format includes some additional meta data to identify the target device and what firmware version it contains. `.alc` is the old format that just includes the firmware.
 
-The additional meta data in the `.axfw` can be used to ensure the new firmware is for the correct device. It also contains firmware version information which can be used to prevent unnessesary downloads.
+The additional meta data in the `.axfw` can be used to ensure the new firmware is for the correct device. It also contains firmware version information which can be used to prevent unnecessary downloads.
 
 #### axfw
 
@@ -132,7 +132,7 @@ This table describes the meta data stored in the header section of the `.axfw` f
 | 19      | Silicon Revision        | Revision of the silicon                               |
 | 20-23   | Firmware CRC            | CRC of the firmware                                   |
 
-The remaining content is the payload that needs to be chunked up before sending to the aXiom bootloader. All of the bytes specified below are located immediatly after the meta data section (i.e. add 16 bytes to all the offsets specified).
+The remaining content is the payload that needs to be chunked up before sending to the aXiom bootloader. All of the bytes specified below are located immediately after the meta data section (i.e. add 16 bytes to all the offsets specified).
 
 | Byte(s)  | Description   | Notes                                         |
 | :---:    | :----         | :---                                          |
@@ -184,7 +184,7 @@ This table describes the meta data stored in the header section of the `.th2cfgb
 | 10-11   | TCP File Revision Patch |              |
 | 12      | TCP Version             |              |
 
-The remaining content of the config file is the data that needs to be written to aXiom. The config data is split into usages. Each usage is packed contigously, and can be navigated by reading the usage length fields.
+The remaining content of the config file is the data that needs to be written to aXiom. The config data is split into usages. Each usage is packed contiguously, and can be navigated by reading the usage length fields.
 
 | Byte(s)  | Description    | Notes                                     |
 | :---:    | :----          | :---                                      |
@@ -194,7 +194,7 @@ The remaining content of the config file is the data that needs to be written to
 | 3-4      | Usage Length   | Length of usage contents, *Little Endian* |
 | 5-Length | Usage Content  | Binary content of the usage               |
 
-*Note:* It is generally recomended to not write to u04 (Customer Data) as the intended purpose of this field is for customers to store data like serial numbers, part numbers etc. Writing to u04 will lose this information.
+*Note:* It is generally recommended to not write to u04 (Customer Data) as the intended purpose of this field is for customers to store data like serial numbers, part numbers etc. Writing to u04 will lose this information.
 
 ### Linux Kernel Module Driver Compatibility
 
