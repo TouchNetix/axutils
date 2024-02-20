@@ -14,7 +14,7 @@ Reference code in this section is provided to demonstrate how small tools can be
 
 `axtbp` can be used to change the mode (Basic, Digitizer, Absolute Mouse) of the provided USB protocol bridge.
 
-## Python Requirements
+## Prerequisites
 
 Requires Python 3.8 to be installed and accessible on the Path variable.
 
@@ -83,6 +83,18 @@ The changes will apply on the next bootup. To apply the changes immediately:
 ```console
 sudo udevadm control --reload-rules
 sudo udevadm trigger
+```
+
+If this error message is observed:
+
+```console
+ImportError: Unable to load any of the following libraries:libhidapi-hidraw.so libhidapi-hidraw.so.0 libhidapi-libusb.so libhidapi-libusb.so.0 libhidapi-iohidmanager.so libhidapi-iohidmanager.so.0 libhidapi.dylib hidapi.dll libhidapi-0.dll
+```
+
+Run the following to install the `hidapi` library.
+
+```console
+sudo apt-get install libhidapi-hidraw0 libhidapi-libusb0
 ```
 
 #### Windows
