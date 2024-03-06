@@ -13,12 +13,14 @@ from axiom_tc import axiom
 from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
 
+
 def show_progress(current, total):
     progress = (float(current) / float(total)) * 100
-    sys.stdout.write('\033[?25l') # Hide cursor
-    sys.stdout.write("Progress: %3.0f%%\r" % (progress))
+    sys.stdout.write('\033[?25l')  # Hide cursor
+    sys.stdout.write("Progress: %3.0f%%\r" % progress)
     sys.stdout.flush()
-    sys.stdout.write('\033[?25h') # Show cursor
+    sys.stdout.write('\033[?25h')  # Show cursor
+
 
 def extract_usages_from_config_file(config_file):
     all_usages_size = 0
@@ -26,7 +28,7 @@ def extract_usages_from_config_file(config_file):
 
     try:
         all_usages_size = os.path.getsize(config_file)
-        
+
         with open(config_file, "rb") as file:
             # The first 4 bytes of the file contains a signature that we use to
             # identify the file as an aXiom config file.
@@ -40,7 +42,7 @@ def extract_usages_from_config_file(config_file):
                 while True:
                     # Extract the usage contents from the config file
                     usage, revision, _, length = struct.unpack("<BBBH", file.read(5))
-                    usage_content = list(struct.unpack("<"+str(length)+"B", file.read(length)))
+                    usage_content = list(struct.unpack("<" + str(length) + "B", file.read(length)))
 
                     # Store the contents into the usages list
                     usages[usage] = (usage, revision, usage_content)
@@ -48,8 +50,8 @@ def extract_usages_from_config_file(config_file):
                     # Check if the end of file has been reached
                     if file.tell() == all_usages_size:
                         break
-            
-            # Remove the config file header from the size. Also remove the the 5 bytes of
+
+            # Remove the config file header from the size. Also remove the 5 bytes of
             # overhead for each usage from the overall length.
             all_usages_size -= 13 + (len(usages) * 5)
     except FileNotFoundError:
@@ -59,14 +61,15 @@ def extract_usages_from_config_file(config_file):
 
     return all_usages_size, usages
 
-def axcfg(axiom, config_file, overwrite_u04):    
+
+def axcfg(axiom, config_file, overwrite_u04):
     # Read u33 from the device to validate the config file is compatible later. u31 is
     # also required, but that is already available via the ax.u31 object.
     u33 = u33_CRCData(axiom)
 
     # Extract out of the config file all the usages into a dictionary.
     all_usages_size, usages = extract_usages_from_config_file(config_file)
-    
+
     # Before the new config is written to the device, check that the config file
     # is compatible with the device by comparing the runtime CRC in u33. Manually
     # populate the u33 content with the content from the file so that a compatibilty
@@ -89,16 +92,18 @@ def axcfg(axiom, config_file, overwrite_u04):
     # Only proceed if the CRCs match.
     if u33_from_file.reg_runtime_crc != u33.reg_runtime_crc:
         print("ERROR: Cannot load config file as it was saved from a different revision of firmware.")
-        print("Firmware info from device      : 0x{0:08X}, {1}".format(u33.reg_runtime_crc, axiom.u31.get_device_info_short()))
-        print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc, u31_from_file.get_device_info_short()))
+        print("Firmware info from device      : 0x{0:08X}, {1}".format(u33.reg_runtime_crc,
+                                                                       axiom.u31.get_device_info_short()))
+        print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc,
+                                                                       u31_from_file.get_device_info_short()))
         return 3
 
     # Stop axiom from performing measurements whilst loading the config file.
     axiom.u02.send_command(axiom.u02.CMD_STOP)
 
-    # Zero out the config for good measure, this is mostly useful when switching between firmware variants. However, this
-    # will also affect u04. Cache u04, fill the config and write u04 back. u04 contains data that a customer would have
-    # written to the device. If may get overwritten later based on the config file and the script arguments.
+    # Zero out the config for good measure, this is mostly useful when switching between firmware variants. However,
+    # this will also affect u04. Cache u04, fill the config and write u04 back. u04 contains data that a customer would
+    # have written to the device. It may get overwritten later based on the config file and the script arguments.
     u04 = axiom.read_usage(0x04)
     axiom.u02.send_command(axiom.u02.CMD_FILL_CONFIG)
     axiom.write_usage(0x04, u04)
@@ -106,11 +111,11 @@ def axcfg(axiom, config_file, overwrite_u04):
     # Write the config to the device by iterating over all the usages from the config file
     bytes_written = 0
     for usage in usages:
-        usage_rev     = usages[usage][1]
+        usage_rev = usages[usage][1]
         usage_content = usages[usage][2]
 
         # u04 contains customer populated data, such as serial numbers, part numbers
-        # serial numbers, etc. Therefore it is assumed that the customer would want 
+        # serial numbers, etc. Therefore, it is assumed that the customer would want
         # to keep the data they have input unless otherwise specified (-c option).
         if usage != 0x04 or (usage == 0x04 and overwrite_u04):
             axiom.config_write_usage_to_device(usage, usage_content)
@@ -134,11 +139,12 @@ def axcfg(axiom, config_file, overwrite_u04):
     # u33 from the device and comparing it with the file
     u33 = u33_CRCData(axiom)
     config_loaded_successfully = u33.compare_u33(u33_from_file, True)
-    if config_loaded_successfully == False:
+    if not config_loaded_successfully:
         print("ERROR: The config file does not match the config on the device.")
         return 4
 
     return 0
+
 
 if __name__ == '__main__':
     # Create argument parser
@@ -165,33 +171,42 @@ Exit status codes:
     config_group = parser.add_argument_group('Configuration Options')
 
     # Add arguments to their respective groups
-    interface_group.add_argument("-i", "--interface", help='Comms interface to communicate with aXiom', choices=["spi", "i2c", "usb"], required=True)
+    interface_group.add_argument("-i", "--interface", help='Comms interface to communicate with aXiom',
+                                 choices=["spi", "i2c", "usb"], required=True)
     interface_group.add_argument("--i2c-bus", help='I2C bus number, as per `/dev/i2c-<bus>`', metavar='BUS', type=int)
-    interface_group.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"], metavar='ADDR')
-    interface_group.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS', type=int)
-    interface_group.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`', metavar='DEV', type=int)
+    interface_group.add_argument("--i2c-address", help='I2C address, either 0x66 or 0x67', choices=["0x66", "0x67"],
+                                 metavar='ADDR')
+    interface_group.add_argument("--spi-bus", help='SPI bus number, as per `/dev/spi<bus>.<device>`', metavar='BUS',
+                                 type=int)
+    interface_group.add_argument("--spi-device", help='SPI device for CS, as per `/dev/spi<bus>.<device>`',
+                                 metavar='DEV', type=int)
 
-    config_group.add_argument("-f", "--file", help='aXiom config file (.th2cfgbin format)', metavar='CONFIG_FILE', required=True)
-    config_group.add_argument("-c", "--load-u04", help='Load u04 data from the config file into the device', action="store_true")
+    config_group.add_argument("-f", "--file", help='aXiom config file (.th2cfgbin format)', metavar='CONFIG_FILE',
+                              required=True)
+    config_group.add_argument("-c", "--load-u04", help='Load u04 data from the config file into the device',
+                              action="store_true")
 
     args = parser.parse_args()
-    
+
     if args.interface == "i2c":
-        if (args.i2c_bus is None or args.i2c_address is None):
+        if args.i2c_bus is None or args.i2c_address is None:
             parser.error("The --i2c-bus and --i2c-address arguments are required when using the I2C interface.")
 
-        from axiom_tc.I2C_Comms import I2C_Comms
+        from axiom_tc import I2C_Comms
+
         comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
 
     if args.interface == "spi":
-        if (args.spi_bus is None or args.spi_device is None):
+        if args.spi_bus is None or args.spi_device is None:
             parser.error("The --spi-bus and --spi-device arguments are required when using the SPI interface.")
 
-        from axiom_tc.SPI_Comms import SPI_Comms
+        from axiom_tc import SPI_Comms
+
         comms = SPI_Comms(args.spi_bus, args.spi_device)
 
     if args.interface == "usb":
-        from axiom_tc.USB_Comms import USB_Comms
+        from axiom_tc import USB_Comms
+
         comms = USB_Comms()
 
     # Initialise comms with axiom 

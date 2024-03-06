@@ -38,21 +38,21 @@ Exit status codes:
     args = parser.parse_args()
     
     if args.interface == "i2c":
-        if (args.i2c_bus is None or args.i2c_address is None):
+        if args.i2c_bus is None or args.i2c_address is None:
             parser.error("The --i2c-bus and --i2c-address arguments are required when using the I2C interface.")
 
-        from axiom_tc.I2C_Comms import I2C_Comms
+        from axiom_tc import I2C_Comms
         comms = I2C_Comms(args.i2c_bus, int(args.i2c_address, 16))
 
     if args.interface == "spi":
-        if (args.spi_bus is None or args.spi_device is None):
+        if args.spi_bus is None or args.spi_device is None:
             parser.error("The --spi-bus and --spi-device arguments are required when using the SPI interface.")
 
-        from axiom_tc.SPI_Comms import SPI_Comms
+        from axiom_tc import SPI_Comms
         comms = SPI_Comms(args.spi_bus, args.spi_device)
 
     if args.interface == "usb":
-        from axiom_tc.USB_Comms import USB_Comms
+        from axiom_tc import USB_Comms
         comms = USB_Comms()
 
     # Initialise comms with axiom 

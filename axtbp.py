@@ -5,27 +5,28 @@
 
 import argparse
 from version import __version__
-from axiom_tc.USB_Comms import USB_Comms
+from axiom_tc import USB_Comms
 
 BridgeMode_TBPBasic = 0
 BridgeMode_TBPDigitizer = 1
 BridgeMode_TBPAbsoluteMouse = 2
 
 TBP_MODES = {
-    'tbp'   : BridgeMode_TBPBasic,
-    'digi'  : BridgeMode_TBPDigitizer,
-    'mouse' : BridgeMode_TBPAbsoluteMouse
+    'tbp': BridgeMode_TBPBasic,
+    'digi': BridgeMode_TBPDigitizer,
+    'mouse': BridgeMode_TBPAbsoluteMouse
 }
 
 TBP_MODE_PID = dict(zip(USB_Comms.PRODUCT_ID, TBP_MODES.keys()))
 
-description_string = 'Utility to change the operating mode of a TNx USB Protocol Bridge.\nIf no argument given program prints the current mode.'
+description_string = ("Utility to change the operating mode of a TNx USB Protocol Bridge."
+                      "\nIf no argument given program prints the current mode.")
 help_string = 'mode to set the Protocol Bridge into.'
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description=description_string)
-    parser.add_argument("-m", help=help_string, choices=TBP_MODES.keys(), \
+    parser.add_argument("-m", help=help_string, choices=TBP_MODES.keys(),
                         required=False, default='', type=str)
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
@@ -36,7 +37,7 @@ if __name__ == '__main__':
 
     try:
         requested_mode = TBP_MODES[args.m]
-        if (requested_mode != current_mode):
+        if requested_mode != current_mode:
             OutBuffer = list(USB_Comms.EMPTY_PKT)
             if requested_mode == BridgeMode_TBPBasic:
                 OutBuffer[0] = 0x0
@@ -65,13 +66,9 @@ if __name__ == '__main__':
             comms.stop_bridge()
             comms.write_device(bytes(OutBuffer))
             buffer = []
-            while (len(buffer) != 0):
+            while len(buffer) != 0:
                 buffer = comms.read_device()
             print("Changed bridge mode to " + args.m)
 
-    except(KeyError):
+    except KeyError:
         print("TNx USB Bridge in mode: " + TBP_MODE_PID[comms.pid])
-
-
-
-
