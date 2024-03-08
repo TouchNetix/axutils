@@ -159,14 +159,15 @@ def alc_download(ax, firmware_file):
 
         while True:
             # Extract all the "chunks" from the firmware file
-            chunk_header = list(struct.unpack(">8B", file.read(8)))
+            chunk_header = list(struct.unpack("8B", file.read(8)))
             chunk_length = (chunk_header[6] << 8) + (chunk_header[7])
-            chunk_payload = list(struct.unpack(">" + str(chunk_length) + "B", file.read(chunk_length)))
+            chunk_payload = list(struct.unpack(str(chunk_length) + "B", file.read(chunk_length)))
 
-            # Send the chunk to be downloaded, the aXiom core code will further
-            # segment the chunk into smaller payloads to be sent to aXiom.
-            ax.bootloader_write_chunk(chunk_header, chunk_payload)
+            full_chunk = chunk_header + chunk_payload
 
+            # Send the chunk (header + payload) to be downloaded, it will be subsequently chunked up
+            # into smaller pieces to be transmitted to the bootloader
+            ax.bootloader_write_chunk(full_chunk)
             show_progress(file.tell(), file_size)
 
             # Has all the firmware chunks been sent the device?
