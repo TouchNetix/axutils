@@ -145,6 +145,52 @@ def axcfg(ax, config_file, overwrite_u04):
     return 0
 
 
+def axcfg_compare_u33(ax, config_file):
+    # Read u33 from the device to validate the config file is compatible later. u31 is
+    # also required, but that is already available via the ax.u31 object.
+    u33 = u33_CRCData(ax)
+
+    # Extract out of the config file all the usages into a dictionary.
+    all_usages_size, usages = extract_usages_from_config_file(config_file)
+
+    # Before the new config is written to the device, check that the config file
+    # is compatible with the device by comparing the runtime CRC in u33. Manually
+    # populate the u33 content with the content from the file so that a compatibility
+    # check can be performed
+    u33_from_file = u33_CRCData(ax, False)
+    u33_from_file._usage_revision = usages[0x33][1]
+    u33_from_file._usage_binary_data = usages[0x33][2]
+    u33_from_file.init_usage()
+    u33_from_file._unpack()
+
+    # Similarly, if the config file that was specified is incompatible, the details
+    # would be in u31. Capture that here, but it will only be used if the config file
+    # is not compatible. This information will tell us what firmware the config came from
+    u31_from_file = u31_DeviceInformation(ax)
+    u31_from_file._usage_revision = usages[0x31][1]
+    u31_from_file._usage_binary_data = usages[0x31][2]
+    u31_from_file._unpack()
+
+    # Compare the firmware runtime CRC from the file with the CRC from the device.
+    # Only proceed if the CRCs match.
+    if u33_from_file.reg_runtime_crc != u33.reg_runtime_crc:
+        print("ERROR: The config file was saved from a different revision of firmware.")
+        print("Firmware info from device      : 0x{0:08X}, {1}".format(u33.reg_runtime_crc,
+                                                                       ax.u31.get_device_info_short()))
+        print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc,
+                                                                       u31_from_file.get_device_info_short()))
+        return 3
+
+    # Verify if the contents have been loaded onto the device correctly by re-reading
+    # u33 from the device and comparing it with the file
+    config_loaded_successfully = u33.compare_u33(u33_from_file, True)
+    if not config_loaded_successfully:
+        print("ERROR: The config file does not match the config on the device.")
+        return 4
+
+    return 0
+
+
 if __name__ == '__main__':
     # Create argument parser
     parser = argparse.ArgumentParser(
@@ -166,9 +212,15 @@ Exit status codes:
         parents=[interface_arg_parser()])
 
     config_group = parser.add_argument_group('Configuration Options')
-    config_group.add_argument("-f", "--file", help='aXiom config file (.th2cfgbin format)', metavar='CONFIG_FILE',
-                              required=True)
-    config_group.add_argument("-c", "--load-u04", help='Load u04 data from the config file into the device',
+    config_group.add_argument("-f", "--file",
+                              help='aXiom config file (.th2cfgbin format)',
+                              metavar='CONFIG.th2cfgbin')
+    config_group.add_argument("--check",
+                              help='Reads u33 from the device, if a config file is specified, then the config will be '
+                                   'compared against the u33 on the device',
+                              action='store_true')
+    config_group.add_argument("-c", "--load-u04",
+                              help='Load u04 data from the config file into the device',
                               action="store_true")
 
     args = parser.parse_args()
@@ -176,8 +228,27 @@ Exit status codes:
     # Initialise comms with aXiom
     axiom = axiom(get_comms_from_args(parser))
 
-    # Load the config file
-    exit_code = axcfg(axiom, args.file, args.load_u04)
+    # Prime the exit code
+    exit_code = 0
+
+    if args.file is not None:
+        if not os.path.isfile(args.file) or not args.file.endswith('.th2cfgbin'):
+            parser.error("The config file does not exist or is not a valid config file.")
+
+    # Load a config file if the check option is not selected
+    if args.file is not None and not args.check:
+        exit_code = axcfg(axiom, args.file, args.load_u04)
+
+    # Compare the file with the device's u33
+    elif args.file is not None and args.check:
+        exit_code = axcfg_compare_u33(axiom, args.file)
+
+    # Read the device's u33
+    elif args.file is None and args.check:
+        u33 = u33_CRCData(axiom)
+        u33.print()
+    else:
+        parser.error('Both the --file and --check arguments were not specified.')
 
     # Safely close the connection to aXiom
     axiom.close()
