@@ -144,6 +144,7 @@ def axcfg(ax, config_file, overwrite_u04):
 
     return 0
 
+
 def axcfg_compare_u33(ax, config_file):
     # Read u33 from the device to validate the config file is compatible later. u31 is
     # also required, but that is already available via the ax.u31 object.
