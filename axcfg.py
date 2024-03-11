@@ -207,6 +207,7 @@ Exit status codes:
     2 : Script argument syntax issue. See --help
     3 : Config file not compatible with firmware on the device
     4 : Config file does not match the device's config
+    5 : aXiom device is in bootloader mode
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[interface_arg_parser()])
@@ -226,30 +227,34 @@ Exit status codes:
     args = parser.parse_args()
 
     # Initialise comms with aXiom
-    axiom = axiom(get_comms_from_args(parser))
+    ax = axiom(get_comms_from_args(parser))
 
     # Prime the exit code
     exit_code = 0
 
-    if args.file is not None:
-        if not os.path.isfile(args.file) or not args.file.endswith('.th2cfgbin'):
-            parser.error("The config file does not exist or is not a valid config file.")
-
-    # Load a config file if the check option is not selected
-    if args.file is not None and not args.check:
-        exit_code = axcfg(axiom, args.file, args.load_u04)
-
-    # Compare the file with the device's u33
-    elif args.file is not None and args.check:
-        exit_code = axcfg_compare_u33(axiom, args.file)
-
-    # Read the device's u33
-    elif args.file is None and args.check:
-        u33 = u33_CRCData(axiom)
-        u33.print()
+    if ax.is_in_bootloader_mode():
+        exit_code = 5
+        print("INFO: aXiom device is in bootloader mode.")
     else:
-        parser.error('Both the --file and --check arguments were not specified.')
+        if args.file is not None:
+            if not os.path.isfile(args.file) or not args.file.endswith('.th2cfgbin'):
+                parser.error("The config file does not exist or is not a valid config file.")
+
+        # Load a config file if the check option is not selected
+        if args.file is not None and not args.check:
+            exit_code = axcfg(ax, args.file, args.load_u04)
+
+        # Compare the file with the device's u33
+        elif args.file is not None and args.check:
+            exit_code = axcfg_compare_u33(ax, args.file)
+
+        # Read the device's u33
+        elif args.file is None and args.check:
+            u33 = u33_CRCData(ax)
+            u33.print()
+        else:
+            parser.error('Both the --file and --check arguments were not specified.')
 
     # Safely close the connection to aXiom
-    axiom.close()
+    ax.close()
     sys.exit(exit_code)

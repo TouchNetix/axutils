@@ -3,6 +3,7 @@
 # This file is part of axutils and is released under the MIT License:
 # See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
+import sys
 from axiom_tc import axiom
 from interface_arg_parser import *
 
@@ -20,6 +21,7 @@ Usage examples:
 Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
+    3 : aXiom device is in bootloader mode
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[interface_arg_parser()])
@@ -27,11 +29,20 @@ Exit status codes:
     args = parser.parse_args()
 
     # Initialise comms with aXiom
-    axiom = axiom(get_comms_from_args(parser))
+    ax = axiom(get_comms_from_args(parser))
 
-    # Show the device version information and the usage table
-    axiom.u31.print_device_info()
-    print()
-    axiom.u31.print_usage_table()
+    # Prime the exit code
+    exit_code = 0
 
-    axiom.close()
+    if ax.is_in_bootloader_mode():
+        exit_code = 3
+        print("INFO: aXiom device is in bootloader mode.")
+    else:
+        # Show the device version information and the usage table
+        ax.u31.print_device_info()
+        print()
+        ax.u31.print_usage_table()
+
+    # Safely close the connection to aXiom
+    ax.close()
+    sys.exit(exit_code)

@@ -9,6 +9,8 @@ import struct
 import binascii
 from time import sleep
 from axiom_tc import axiom
+from axiom_tc import Bootloader
+from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
 from interface_arg_parser import *
 
@@ -74,11 +76,13 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
     Validates the .axfw file before attempting a download.
 
     Returns:
-        0 : File is valid, compatible with the device and can be loaded
-        5 : .axfw file is invalid. E.g. failed signature check or CRC mismatch
-        6 : The .axfw is intended for a different aXiom device
-        7 : The .axfw firmware is already on the device
-        8 : The firmware variant in the .axfw does not match the device's firmware variant
+         0 : File is valid, compatible with the device and can be loaded
+         5 : .axfw file is invalid. E.g. failed signature check or CRC mismatch
+         6 : The .axfw is intended for a different aXiom device
+         7 : The .axfw firmware is already on the device
+         8 : The firmware variant in the .axfw does not match the device's firmware variant
+        10 : The device is in bootloader mode already, the device ID is correct, but the firmware variant cannot be
+             checked
 
         firmware_crc : The CRC of the firmware in the file to be used for comparison after the download completes
     """
@@ -110,6 +114,8 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
         return 6, None
 
     if u31_fw_variant != file_fw_variant:
+        if ax.u31.reg_mode:
+            return 10, file_fw_crc
         return 8, file_fw_crc
 
     # Compare the firmware information to prevent any unnecessary downloads. The --force
@@ -142,13 +148,15 @@ def alc_download(ax, firmware_file):
     If an .axfw file is specified, it is assumed that all the validation and verification
     checks have already been done (see axfw_check_file_and_validate_parameters()).
     """
+    bl = Bootloader(ax, ax._comms)
+
     if firmware_file.endswith("alc"):
         firmware_start_offset = 0
     else:
         firmware_start_offset = 24
 
     # Before the download can start, the aXiom device needs to be in bootloader mode
-    if not ax.enter_bootloader_mode():
+    if not bl.enter_bootloader_mode():
         print("Error: Failed to enter bootloader mode.")
         return 4
 
@@ -167,7 +175,7 @@ def alc_download(ax, firmware_file):
 
             # Send the chunk (header + payload) to be downloaded, it will be subsequently chunked up
             # into smaller pieces to be transmitted to the bootloader
-            ax.bootloader_write_chunk(full_chunk)
+            bl.write_chunk(full_chunk)
             show_progress(file.tell(), file_size)
 
             # Has all the firmware chunks been sent the device?
@@ -177,7 +185,7 @@ def alc_download(ax, firmware_file):
     print("")
 
     # Reset the aXiom bootloader so that the new firmware is active.
-    ax.bootloader_reset_axiom()
+    bl.reset_axiom()
     sleep(2)
     return 0
 
@@ -225,12 +233,12 @@ Exit status codes:
     args = parser.parse_args()
 
     # Initialise comms with aXiom
-    axiom = axiom(get_comms_from_args(parser))
+    ax = axiom(get_comms_from_args(parser))
 
     exit_code = 0
 
     # Always show the firmware version of the device
-    print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
+    print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
 
     # If the --info option is specified, no download will occur. It will show the
     # version information of the attached device. If an .axfw file is also specified,
@@ -247,8 +255,9 @@ Exit status codes:
                 axfw_get_fw_info_from_file(args.file))
 
             if exit_code == 0:
+                u31_file = u31_DeviceInformation(ax, read=False, read_usage_table=False)
                 print("File FW Info   : {0}".format(
-                    axiom.u31.convert_device_info_to_string(device_id, fw_variant, fw_ver_major, fw_ver_minor,
+                    u31_file.convert_device_info_to_string(device_id, fw_variant, fw_ver_major, fw_ver_minor,
                                                             fw_ver_patch, fw_status)))
             else:
                 print("ERROR: Unknown .axfw file")
@@ -263,13 +272,13 @@ Exit status codes:
             exit_code = 3
             print("ERROR: Invalid file extension")
         elif args.file.endswith("axfw"):
-            exit_code, fw_crc = axfw_check_file_and_validate_parameters(axiom, args.file)
-            if exit_code == 0 or (exit_code in [7, 8] and args.force):
-                exit_code = axfw_download(axiom, args.file)
+            exit_code, fw_crc = axfw_check_file_and_validate_parameters(ax, args.file)
+            if exit_code in [0, 10] or (exit_code in [7, 8] and args.force):
+                exit_code = axfw_download(ax, args.file)
                 if exit_code == 0:
-                    axiom.u31.build_usage_table()
-                    print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
-                    u33 = u33_CRCData(axiom)
+                    ax.u31.build_usage_table()
+                    print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
+                    u33 = u33_CRCData(ax)
                     if u33.reg_runtime_nvm_crc != fw_crc:
                         print(
                             f"ERROR: Firmware CRC check failed. Device: 0x{u33.reg_runtime_nvm_crc:08X}, "
@@ -283,11 +292,11 @@ Exit status codes:
                 print("INFO: Skipping download, the firmware variant in the .axfw does not match the device")
         else:
             # Must be alc download
-            exit_code = alc_download(axiom, args.file)
+            exit_code = alc_download(ax, args.file)
             if exit_code == 0:
-                axiom.u31.build_usage_table()
-                print("Device FW Info : {0}".format(axiom.u31.get_device_info_short()))
+                ax.u31.build_usage_table()
+                print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
 
     # Safely close the connection to aXiom and set the exit code
-    axiom.close()
+    ax.close()
     sys.exit(exit_code)
