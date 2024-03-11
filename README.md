@@ -2,17 +2,19 @@
 
 Reference code in this section is provided to demonstrate how small tools can be created to handle different maintenance operations of an aXiom Device.
 
-`axfw` uploads a new firmware image onto an aXiom device.
+`axfw.py` uploads a new firmware image onto an aXiom device.
 
-`axcfg` uploads a binary configuration file to an aXiom device. Binary configuration files are created by TouchHub2.
+`axcfg.py` uploads a binary configuration file to an aXiom device. Binary configuration files are created by TouchHub2.
 
-`axut` queries an aXiom device and reports firmware version information as well as the usage table.
+`axut.py` queries an aXiom device and reports firmware version information as well as the usage table.
 
-`axrpt` provides example code to read reports from aXiom in either a polled or interrupt driven scheme. A Raspberry Pi is required for this interrupt driven example to function.
+`axrpt.py` provides example code to read reports from aXiom in either a polled or interrupt driven scheme. A Raspberry Pi is required for this interrupt driven example to function.
 
-`axfactdata` reads out the aXiom device's factory data.
+`axfactdata.py` reads out the aXiom device's factory data.
 
-`axtbp` can be used to change the mode (Basic, Digitizer, Absolute Mouse) of the provided USB protocol bridge.
+`axtbp.py` can be used to change the mode (Basic, Digitizer, Absolute Mouse) of the provided USB protocol bridge.
+
+`interface_arg_parser.py` helper functions to parse script arguments. Specifically, it handles the interface (I2C, SPI, USB) options so that all scripts have a consistent interface.
 
 ## Prerequisites
 
