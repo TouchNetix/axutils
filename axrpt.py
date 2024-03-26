@@ -3,12 +3,14 @@
 # This file is part of axutils and is released under the MIT License:
 # See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
+import sys
 import time
 import logging
 import signal
 from functools import partial
 from axiom_tc import axiom
 from interface_arg_parser import *
+from exitcodes import *
 
 keyboard_signal_interrupt_requested = False
 
@@ -209,6 +211,7 @@ Press Ctrl+C at any time to safely exit the script.
 Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
+    3 : aXiom device is in bootloader mode
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[interface_arg_parser()])
@@ -241,16 +244,24 @@ Exit status codes:
     signal.signal(signal.SIGINT, custom_signal_handler)
 
     # Initialise comms with axiom 
-    axiom = axiom(comms)
+    ax = axiom(comms)
 
-    u34_ta = axiom.u31.convert_usage_to_target_address(0x34)
-    u34_max_report_length = axiom.u31.max_report_len
+    # Prime the exit code
+    exit_code = SUCCESS
 
-    print("Press Ctrl+C at any time to safely exit the script.")
-
-    if args.gpioint is not None:
-        main_loop_interrupts(comms, report_logger, u34_ta, u34_max_report_length)
+    if ax.is_in_bootloader_mode():
+        exit_code = ERROR_AXIOM_IN_BOOTLOADER
+        print("INFO: aXiom device is in bootloader mode.")
     else:
-        main_loop_polled(comms, report_logger, u34_ta, u34_max_report_length)
+        u34_ta = ax.u31.convert_usage_to_target_address(0x34)
+        u34_max_report_length = ax.u31.max_report_len
 
-    axiom.close()
+        print("Press Ctrl+C at any time to safely exit the script.")
+
+        if args.gpioint is not None:
+            main_loop_interrupts(comms, report_logger, u34_ta, u34_max_report_length)
+        else:
+            main_loop_polled(comms, report_logger, u34_ta, u34_max_report_length)
+
+    ax.close()
+    sys.exit(exit_code)

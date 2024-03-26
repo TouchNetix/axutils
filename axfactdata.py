@@ -3,10 +3,10 @@
 # This file is part of axutils and is released under the MIT License:
 # See the LICENSE file in the root directory of this project or http://opensource.org/licenses/MIT.
 
-
+import sys
 from axiom_tc import axiom
 from interface_arg_parser import *
-
+from exitcodes import *
 
 def print_data(data):
     # Header for byte indexes
@@ -47,6 +47,7 @@ Usage examples:
 Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
+    3 : aXiom device is in bootloader mode
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[interface_arg_parser()])
@@ -61,16 +62,24 @@ Exit status codes:
     args = parser.parse_args()
 
     # Initialise comms with aXiom
-    axiom = axiom(get_comms_from_args(parser))
+    ax = axiom(get_comms_from_args(parser))
 
-    # Read the u36 from the aXiom device
-    u36 = axiom.read_usage(0x36)
+    # Prime the exit code
+    exit_code = SUCCESS
 
-    # Either print the output to stdout or write the contents to a file
-    if args.output != "":
-        write_data_to_file(args.output, u36)
+    if ax.is_in_bootloader_mode():
+        exit_code = ERROR_AXIOM_IN_BOOTLOADER
+        print("INFO: aXiom device is in bootloader mode.")
     else:
-        print_data(u36)
+        # Read the u36 from the aXiom device
+        u36 = ax.read_usage(0x36)
+
+        # Either print the output to stdout or write the contents to a file
+        if args.output != "":
+            write_data_to_file(args.output, u36)
+        else:
+            print_data(u36)
 
     # Safely close the connection to aXiom
-    axiom.close()
+    ax.close()
+    sys.exit(exit_code)
