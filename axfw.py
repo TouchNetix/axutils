@@ -13,6 +13,7 @@ from axiom_tc import Bootloader
 from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
 from interface_arg_parser import *
+from exitcodes import *
 
 
 def show_progress(current, total):
@@ -43,8 +44,8 @@ def axfw_get_fw_info_from_file(firmware_file):
     validation of the header.
 
     Returns:
-        5 : .axfw file is invalid. E.g. failed signature check or CRC mismatch
-        0, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, fw_crc
+        ERROR_AXFW_NOT_VALID : .axfw file is invalid. E.g. failed signature check or CRC mismatch
+        SUCCESS, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, fw_crc
     """
     with open(firmware_file, "rb") as file:
         signature, axfw_crc, axfw_format_ver = list(struct.unpack("<2IH", file.read(10)))
@@ -53,22 +54,22 @@ def axfw_get_fw_info_from_file(firmware_file):
         # rest of the file
         if struct.pack("<I", signature).decode() != 'AXFW':
             print("ERROR: Invalid .axfw signature")
-            return 5
+            return ERROR_AXFW_NOT_VALID
 
         if axfw_format_ver != 0x0200:
             print("ERROR: Unknown .axfw format version")
-            return 5
+            return ERROR_AXFW_NOT_VALID
 
         axfw_crc_calculated = get_axfw_file_crc(firmware_file)
         if axfw_crc != axfw_crc_calculated:
             print("ERROR: The .axfw CRC was invalid")
-            return 5
+            return ERROR_AXFW_NOT_VALID
 
         device_id, fw_variant, fw_ver_minor, fw_ver_major, fw_ver_patch, fw_status = list(
             struct.unpack("<H5B", file.read(7)))
         _, _, fw_crc = list(struct.unpack("<HBI", file.read(7)))
 
-    return 0, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, fw_crc
+    return SUCCESS, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, fw_crc
 
 
 def axfw_check_file_and_validate_parameters(ax, firmware_file):
@@ -76,13 +77,24 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
     Validates the .axfw file before attempting a download.
 
     Returns:
-         0 : File is valid, compatible with the device and can be loaded
-         5 : .axfw file is invalid. E.g. failed signature check or CRC mismatch
-         6 : The .axfw is intended for a different aXiom device
-         7 : The .axfw firmware is already on the device
-         8 : The firmware variant in the .axfw does not match the device's firmware variant
-        10 : The device is in bootloader mode already, the device ID is correct, but the firmware variant cannot be
-             checked
+        SUCCESS :
+            File is valid, compatible with the device and can be loaded
+
+        ERROR_AXFW_NOT_VALID :
+            .axfw file is invalid. E.g. failed signature check or CRC mismatch
+
+        ERROR_AXFW_NOT_COMPATIBLE_WITH_DEVICE :
+            The .axfw is intended for a different aXiom device
+
+        INFO_FIRMWARE_LOAD_NOT_REQUIRED :
+            The .axfw firmware is already on the device
+
+        ERROR_AXFW_FIRMWARE_VARIANT_DIFFERENT :
+            The firmware variant in the .axfw does not match the device's firmware variant
+
+        ERROR_FIRMWARE_CRC_FAILED :
+            The device is in bootloader mode already, the device ID is correct, but the firmware variant cannot be
+            checked
 
         firmware_crc : The CRC of the firmware in the file to be used for comparison after the download completes
     """
@@ -102,7 +114,7 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
      file_fw_status, file_fw_crc) = axfw_get_fw_info_from_file(firmware_file)
 
     # If the .axfw file is not valid, exit now
-    if return_code != 0:
+    if return_code != SUCCESS:
         return return_code, None
 
     # Compare the device ID from the device and the .axfw file. This returns a different
@@ -111,12 +123,12 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
         u31_device_str = ax.u31.convert_device_id_to_string(u31_device_id)
         device_id_str = ax.u31.convert_device_id_to_string(file_device_id)
         print(f"ERROR: The .axfw file is for a different device. Device: {u31_device_str}, File: {device_id_str}")
-        return 6, None
+        return ERROR_AXFW_NOT_COMPATIBLE_WITH_DEVICE, None
 
     if u31_fw_variant != file_fw_variant:
         if ax.u31.reg_mode:
-            return 10, file_fw_crc
-        return 8, file_fw_crc
+            return ERROR_AXIOM_IN_BOOTLOADER, file_fw_crc
+        return ERROR_AXFW_FIRMWARE_VARIANT_DIFFERENT, file_fw_crc
 
     # Compare the firmware information to prevent any unnecessary downloads. The --force
     # option can override this and still perform the download
@@ -124,10 +136,10 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
             u31_fw_minor == file_fw_ver_minor and
             u31_fw_patch == file_fw_ver_patch and
             u31_fw_status == file_fw_status):
-        return 7, file_fw_crc
+        return INFO_FIRMWARE_LOAD_NOT_REQUIRED, file_fw_crc
 
     # File is OK and valid to be loaded onto the aXiom device
-    return 0, file_fw_crc
+    return SUCCESS, file_fw_crc
 
 
 def axfw_download(ax, firmware_file):
@@ -187,7 +199,7 @@ def alc_download(ax, firmware_file):
     # Reset the aXiom bootloader so that the new firmware is active.
     bl.reset_axiom()
     sleep(2)
-    return 0
+    return SUCCESS
 
 
 if __name__ == '__main__':
@@ -205,15 +217,15 @@ Usage examples:
     python %(prog)s -i usb --info
 
 Exit status codes:
-    0 : Success
-    2 : Script argument syntax issue. See --help
-    3 : File is not an .axfw or .alc file, or no file specified
-    4 : Failed to get the aXiom device to enter bootloader mode
-    5 : The .axfw file was not valid
-    6 : The .axfw is for a different aXiom device
-    7 : The firmware is already loaded onto the aXiom device
-    8 : The .axfw firmware variant is different from the firmware on the aXiom device
-    9 : The firmware CRC check failed after the download was completed
+     0 : Success
+     2 : Script argument syntax issue. See --help
+     6 : File is not an .axfw, .alc file or no file specified
+     7 : Failed to get the aXiom device to enter bootloader mode
+     8 : The .axfw file was not valid
+     9 : The .axfw is for a different aXiom device
+    10 : The firmware is already loaded onto the aXiom device
+    11 : The .axfw firmware variant is different from the firmware on the aXiom device
+    12 : The firmware CRC check failed after the download was completed
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[interface_arg_parser()])
@@ -235,7 +247,7 @@ Exit status codes:
     # Initialise comms with aXiom
     ax = axiom(get_comms_from_args(parser))
 
-    exit_code = 0
+    exit_code = SUCCESS
 
     # Always show the firmware version of the device
     print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
@@ -249,12 +261,12 @@ Exit status codes:
             pass  # Nothing to do
         elif args.file is not None and not args.file.endswith(("axfw", "alc")):
             print("ERROR: Unknown filetype")
-            exit_code = 3
+            exit_code = ERROR_INVALID_OR_NO_FILE_SPECIFIED
         elif args.file.endswith("axfw"):
             exit_code, device_id, fw_variant, fw_ver_major, fw_ver_minor, fw_ver_patch, fw_status, _ = (
                 axfw_get_fw_info_from_file(args.file))
 
-            if exit_code == 0:
+            if exit_code == SUCCESS:
                 u31_file = u31_DeviceInformation(ax, read=False, read_usage_table=False)
                 print("File FW Info   : {0}".format(
                     u31_file.convert_device_info_to_string(device_id, fw_variant, fw_ver_major, fw_ver_minor,
@@ -263,19 +275,19 @@ Exit status codes:
                 print("ERROR: Unknown .axfw file")
         else:
             print("INFO: Cannot compare an .alc file")
-            exit_code = 0
+            exit_code = SUCCESS
     else:
         if args.file is None:
-            exit_code = 3
+            exit_code = ERROR_INVALID_OR_NO_FILE_SPECIFIED
             print("ERROR: No firmware file specified")
         elif args.file is not None and not args.file.endswith(("axfw", "alc")):
-            exit_code = 3
+            exit_code = ERROR_INVALID_OR_NO_FILE_SPECIFIED
             print("ERROR: Invalid file extension")
         elif args.file.endswith("axfw"):
             exit_code, fw_crc = axfw_check_file_and_validate_parameters(ax, args.file)
-            if exit_code in [0, 10] or (exit_code in [7, 8] and args.force):
+            if exit_code in [SUCCESS, ERROR_AXIOM_IN_BOOTLOADER] or (exit_code in [INFO_FIRMWARE_LOAD_NOT_REQUIRED, ERROR_AXFW_FIRMWARE_VARIANT_DIFFERENT] and args.force):
                 exit_code = axfw_download(ax, args.file)
-                if exit_code == 0:
+                if exit_code == SUCCESS:
                     ax.u31.build_usage_table()
                     print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
                     u33 = u33_CRCData(ax)
@@ -283,17 +295,17 @@ Exit status codes:
                         print(
                             f"ERROR: Firmware CRC check failed. Device: 0x{u33.reg_runtime_nvm_crc:08X}, "
                             f"File: 0x{fw_crc:08X}")
-                        exit_code = 9
-            elif exit_code == 5:
+                        exit_code = ERROR_FIRMWARE_CRC_FAILED
+            elif exit_code == ERROR_AXFW_NOT_VALID:
                 print("ERROR: Unknown .axfw file")
-            elif exit_code == 7:
+            elif exit_code == INFO_FIRMWARE_LOAD_NOT_REQUIRED:
                 print("INFO: Skipping download, the same firmware is already on the device")
-            elif exit_code == 8:
+            elif exit_code == ERROR_AXFW_FIRMWARE_VARIANT_DIFFERENT:
                 print("INFO: Skipping download, the firmware variant in the .axfw does not match the device")
         else:
             # Must be alc download
             exit_code = alc_download(ax, args.file)
-            if exit_code == 0:
+            if exit_code == SUCCESS:
                 ax.u31.build_usage_table()
                 print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
 

@@ -11,6 +11,7 @@ from axiom_tc import axiom
 from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
 from interface_arg_parser import *
+from exitcodes import *
 
 
 def show_progress(current, total):
@@ -95,7 +96,7 @@ def axcfg(ax, config_file, overwrite_u04):
                                                                        ax.u31.get_device_info_short()))
         print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc,
                                                                        u31_from_file.get_device_info_short()))
-        return 3
+        return ERROR_CFG_FILE_NOT_COMPATIBLE
 
     # Stop axiom from performing measurements whilst loading the config file.
     ax.u02.send_command(ax.u02.CMD_STOP)
@@ -140,9 +141,9 @@ def axcfg(ax, config_file, overwrite_u04):
     config_loaded_successfully = u33.compare_u33(u33_from_file, True)
     if not config_loaded_successfully:
         print("ERROR: The config file does not match the config on the device.")
-        return 4
+        return ERROR_CFG_FILE_MISMATCH
 
-    return 0
+    return SUCCESS
 
 
 def axcfg_compare_u33(ax, config_file):
@@ -179,16 +180,16 @@ def axcfg_compare_u33(ax, config_file):
                                                                        ax.u31.get_device_info_short()))
         print("Firmware info from config file : 0x{0:08X}, {1}".format(u33_from_file.reg_runtime_crc,
                                                                        u31_from_file.get_device_info_short()))
-        return 3
+        return ERROR_CFG_FILE_NOT_COMPATIBLE
 
     # Verify if the contents have been loaded onto the device correctly by re-reading
     # u33 from the device and comparing it with the file
     config_loaded_successfully = u33.compare_u33(u33_from_file, True)
     if not config_loaded_successfully:
         print("ERROR: The config file does not match the config on the device.")
-        return 4
+        return ERROR_CFG_FILE_MISMATCH
 
-    return 0
+    return SUCCESS
 
 
 if __name__ == '__main__':
@@ -205,9 +206,9 @@ Usage examples:
 Exit status codes:
     0 : Success
     2 : Script argument syntax issue. See --help
-    3 : Config file not compatible with firmware on the device
-    4 : Config file does not match the device's config
-    5 : aXiom device is in bootloader mode
+    3 : aXiom device is in bootloader mode
+    4 : Config file not compatible with firmware on the device
+    5 : Config file does not match the device's config
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[interface_arg_parser()])
@@ -233,7 +234,7 @@ Exit status codes:
     exit_code = 0
 
     if ax.is_in_bootloader_mode():
-        exit_code = 5
+        exit_code = ERROR_AXIOM_IN_BOOTLOADER
         print("INFO: aXiom device is in bootloader mode.")
     else:
         if args.file is not None:

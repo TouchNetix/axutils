@@ -6,7 +6,7 @@
 import sys
 from axiom_tc import axiom
 from interface_arg_parser import *
-
+from exitcodes import *
 
 def print_data(data):
     # Header for byte indexes
@@ -65,10 +65,10 @@ Exit status codes:
     ax = axiom(get_comms_from_args(parser))
 
     # Prime the exit code
-    exit_code = 0
+    exit_code = SUCCESS
 
     if ax.is_in_bootloader_mode():
-        exit_code = 3
+        exit_code = ERROR_AXIOM_IN_BOOTLOADER
         print("INFO: aXiom device is in bootloader mode.")
     else:
         # Read the u36 from the aXiom device
