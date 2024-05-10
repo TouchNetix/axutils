@@ -69,6 +69,8 @@ def decode_and_process_report(report, report_logger):
         decode_u01(report_logger, report[2:])
     elif report[1] == 0x41:
         decode_u41(report_logger, report[2:])
+    elif report[1] == 0x45:
+        decode_u45(report_logger, report[2:])
 
 
 def decode_u41(report_logger, report):
@@ -109,7 +111,31 @@ def decode_u41(report_logger, report):
     if target_status != 0 or extra_info != 0:
         report_logger.info(report_string, extra={'usage': 0x41})
 
-
+def decode_u45(report_logger, report):
+    """
+    Decode u45 Hotspots report.
+    Structure of the hotspots report according to the current firmware:
+        uint16bitfield_t    HotspotIndex        : 8,
+                            ContactIndex        : 8;
+        uint16bitfield_t    QualificationIndex  : 8,
+                            Reason              : 8;
+                            uint16_t            X;
+                            uint16_t            Y;
+      HSI   CI  QI   Re    X    X    Y    Y    P o s t a m b le (Timestamp + checksum) 
+    |    |    |    |    |    |    |    |    |    |    |    |    |  
+      0    1    2    3    4    5    6    7    8    9    10   11 
+    """
+    PossibleReasonsEffect = ['Entered Hotspot', 'Exited Hotspot', 'Press threshold exceeded','Release threshold exceeded', 'Move', 'Entered and press threshold exceeded','Exited and release threshold exceeded']
+    # Extract the timestamp and checksum from the report
+    timestamp = report[8] + (report[9] << 8)
+    HotspotIndex = report[0]
+    ContactIndex = report[1]
+    QualificationIndex = report[2]
+    Reason = PossibleReasonsEffect[report[3]]
+    report_string = "u45  {0:>5} HotpostIndex:  {1:>4} ContactIndex: {2:>4} QualificationIndex: {3:>4}".format(timestamp,HotspotIndex,ContactIndex,QualificationIndex)
+    report_string += " " + Reason
+    report_logger.info(report_string, extra={'usage': 0x45})
+        
 def decode_u01(report_logger, report):
     """
     Basic decoding of the u01 System manager report.
