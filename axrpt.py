@@ -115,13 +115,7 @@ def decode_u45(report_logger, report):
     """
     Decode u45 Hotspots report.
     Structure of the hotspots report according to the current firmware:
-        uint16bitfield_t    HotspotIndex        : 8,
-                            ContactIndex        : 8;
-        uint16bitfield_t    QualificationIndex  : 8,
-                            Reason              : 8;
-                            uint16_t            X;
-                            uint16_t            Y;
-      HSI   CI  QI   Re    X    X    Y    Y    P o s t a m b le (Timestamp + checksum) 
+      HSI   CI  QI   Re    X    X    Y    Y    P o s t a m b l e(Timestamp + checksum) 
     |    |    |    |    |    |    |    |    |    |    |    |    |  
       0    1    2    3    4    5    6    7    8    9    10   11 
     """
