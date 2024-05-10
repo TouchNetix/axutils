@@ -115,7 +115,7 @@ def decode_u45(report_logger, report):
     """
     Decode u45 Hotspots report.
     Structure of the hotspots report according to the current firmware:
-      HSI   CI  QI   Re    X    X    Y    Y    P o s t a m b l e(Timestamp + checksum) 
+      HSI   CI  QI   Re    X    X    Y    Y    Timestamp + checksum
     |    |    |    |    |    |    |    |    |    |    |    |    |  
       0    1    2    3    4    5    6    7    8    9    10   11 
     """
