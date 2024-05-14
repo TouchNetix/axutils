@@ -58,6 +58,15 @@ def arg_hex_type(x):
     return int(x, 16)
 
 
+def char_reverse(b):
+    """
+    reverse the 8 bits of the char "b"
+    """
+    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+    b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+    b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+    return b;
+
 def decode_and_process_report(report, report_logger):
     """
     A report has been received, pass it off to the relevant decoder.
@@ -114,19 +123,30 @@ def decode_u41(report_logger, report):
 def decode_u45(report_logger, report):
     """
     Decode u45 Hotspots report.
-    Structure of the hotspots report according to the current firmware:
-      HSI   CI  QI   Re    X    X    Y    Y    Timestamp + checksum
-    |    |    |    |    |    |    |    |    |    |    |    |    |  
-      0    1    2    3    4    5    6    7    8    9    10   11 
+    Structure of the hotspots report according to the firmware:
+      HSI                       8 bits
+      Contact or CoM index      4 bits
+      Consider CoM              1 bit
+      Reserved                  3 bits
+      Qualification Index       8 bits
+      Reason                    8 bits
+      X                        16 bits
+      Y                        16 bits
     """
     PossibleReasonsEffect = ['Entered Hotspot', 'Exited Hotspot', 'Press threshold exceeded','Release threshold exceeded', 'Move', 'Entered and press threshold exceeded','Exited and release threshold exceeded']
     # Extract the timestamp and checksum from the report
     timestamp = report[8] + (report[9] << 8)
+    # Rest of fields, taking into account endianness 
     HotspotIndex = report[0]
-    ContactIndex = report[1]
+    ContactCoMIndex = char_reverse(report[1]) >> 4
+    ConsiderCoM = (char_reverse(report[1])  & 0x8 )>> 3
     QualificationIndex = report[2]
     Reason = PossibleReasonsEffect[report[3]]
-    report_string = "u45  {0:>5} HotpostIndex:  {1:>4} ContactIndex: {2:>4} QualificationIndex: {3:>4}".format(timestamp,HotspotIndex,ContactIndex,QualificationIndex)
+    if ConsiderCoM==0:
+        report_string = "u45  {0:>5} HotpostIndex:  {1:>4} ContactIndex: {2:>4} QualificationIndex: {3:>4}".format(timestamp,HotspotIndex,ContactCoMIndex,QualificationIndex)
+    else:
+        report_string = "u45  {0:>5} HotpostIndex:  {1:>4} CoMIndex:     {2:>4} QualificationIndex: {3:>4}".format(timestamp,HotspotIndex,ContactCoMIndex,QualificationIndex)
+
     report_string += " " + Reason
     report_logger.info(report_string, extra={'usage': 0x45})
         
