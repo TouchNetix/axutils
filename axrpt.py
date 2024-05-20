@@ -124,30 +124,60 @@ def decode_u45(report_logger, report):
     """
     Decode u45 Hotspots report.
     Structure of the hotspots report according to the firmware:
-      HSI                       8 bits
-      Contact or CoM index      4 bits
-      Consider CoM              1 bit
-      Reserved                  3 bits
-      Qualification Index       8 bits
-      Reason                    8 bits
-      X                        16 bits
-      Y                        16 bits
+        ContactOrCoM                2 bits
+        Reserved                   14 bits 
+
+        --Contact
+            HotspotIndex            8 bits
+            ContactorCoMIndex       4 bits
+            Reserved                4 bits
+            ------------
+            QualificationIndex      8 bits
+            Reason                  8 bits
+            -------------
+            X                      16 bits 
+            -------------
+            Y                      16 bits
+            -------------
+        --CoM
+            HotspotIndex            8 bits
+            ContactorCoMIndex       4 bits
+            Reserved                4 bits
+            -------------
+            QualificationIndex      8 bits
+            Reason                  8 bits
+            -------------
+            X                      16 bits
+            -------------
+            Y                      16 bits
+
     """
     PossibleReasonsEffect = ['Entered Hotspot', 'Exited Hotspot', 'Press threshold exceeded','Release threshold exceeded', 'Move', 'Entered and press threshold exceeded','Exited and release threshold exceeded']
     # Extract the timestamp and checksum from the report
-    timestamp = report[8] + (report[9] << 8)
+    timestamp = report[18] + (report[19] << 8)
     # Rest of fields, taking into account endianness 
-    HotspotIndex = report[0]
-    ContactCoMIndex = char_reverse(report[1]) >> 4
-    ConsiderCoM = (char_reverse(report[1])  & 0x8 )>> 3
-    QualificationIndex = report[2]
-    Reason = PossibleReasonsEffect[report[3]]
-    if ConsiderCoM==0:
-        report_string = "u45  {0:>5} HotpostIndex:  {1:>4} ContactIndex: {2:>4} QualificationIndex: {3:>4}".format(timestamp,HotspotIndex,ContactCoMIndex,QualificationIndex)
-    else:
-        report_string = "u45  {0:>5} HotpostIndex:  {1:>4} CoMIndex:     {2:>4} QualificationIndex: {3:>4}".format(timestamp,HotspotIndex,ContactCoMIndex,QualificationIndex)
+    ContactOrCoM = char_reverse(report[0]) & 0x0003
+    ContactHotspotIndex = report[2]
+    ContactIndex = char_reverse(report[3]) >> 4
+    ContactQualificationIndex = report[4]
+    ContactReason = PossibleReasonsEffect[report[5]]
+    CoMHotspotIndex = report[2]
+    CoMIndex = char_reverse(report[3]) >> 4
+    CoMQualificationIndex = report[4]
+    CoMReason = PossibleReasonsEffect[report[5]]
+    if ContactOrCoM == 0:
+        report_string = "u45  {0:>5} HotpostIndex(Contact):  {1:>4} ContactIndex: {2:>4} QualificationIndex(Contact): {3:>4}".format(timestamp,ContactHotspotIndex,ContactIndex,ContactQualificationIndex)
+        report_string += " " + ContactReason
+    elif ContactOrCoM == 1:
+        report_string = "u45  {0:>5} HotpostIndex(CoM):      {1:>4} CoMIndex:     {2:>4} QualificationIndex(CoM):     {3:>4}".format(timestamp,CoMHotspotIndex,CoMIndex,CoMQualificationIndex)
+        report_string += " " + CoMReason
+    elif ContactOrCoM == 2:
+        report_string = "u45  {0:>5} HotpostIndex(Contact):  {1:>4} ContactIndex: {2:>4} QualificationIndex(Contact): {3:>4}".format(timestamp,ContactHotspotIndex,ContactIndex,ContactQualificationIndex)
+        report_string += " " + ContactReason
+        report_string = "HotpostIndex(CoM):      {0:>4} CoMIndex:     {1:>4} QualificationIndex(CoM):     {2:>4}".format(CoMHotspotIndex,CoMIndex,CoMQualificationIndex)
+        report_string += " " + CoMReason
 
-    report_string += " " + Reason
+    
     report_logger.info(report_string, extra={'usage': 0x45})
         
 def decode_u01(report_logger, report):
