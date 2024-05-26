@@ -124,13 +124,10 @@ def decode_u45(report_logger, report):
     """
     Decode u45 Hotspots report.
     Structure of the hotspots report according to the firmware:
-        ContactOrCoM                2 bits
-        Reserved                   14 bits 
-
-        --Contact
+        --Contact or CoM #i
             HotspotIndex            8 bits
-            ContactorCoMIndex       4 bits
-            Reserved                4 bits
+            ValidSubreport          1 bit
+            Reserved                7 bits
             ------------
             QualificationIndex      8 bits
             Reason                  8 bits
@@ -139,46 +136,70 @@ def decode_u45(report_logger, report):
             -------------
             Y                      16 bits
             -------------
-        --CoM
-            HotspotIndex            8 bits
-            ContactorCoMIndex       4 bits
-            Reserved                4 bits
-            -------------
-            QualificationIndex      8 bits
-            Reason                  8 bits
-            -------------
-            X                      16 bits
-            -------------
-            Y                      16 bits
 
     """
+    ForceOnly = True   #For only Force chip, we expect 4 CoMs. For any other variant, we expect Contact and CoM
     PossibleReasonsEffect = ['Entered Hotspot', 'Exited Hotspot', 'Press threshold exceeded','Release threshold exceeded', 'Move', 'Entered and press threshold exceeded','Exited and release threshold exceeded']
-    # Extract the timestamp and checksum from the report
-    timestamp = report[18] + (report[19] << 8)
-    # Rest of fields, taking into account endianness 
-    ContactOrCoM = char_reverse(report[0]) & 0x0003
-    ContactHotspotIndex = report[2]
-    ContactIndex = char_reverse(report[3]) >> 4
-    ContactQualificationIndex = report[4]
-    ContactReason = PossibleReasonsEffect[report[5]]
-    CoMHotspotIndex = report[2]
-    CoMIndex = char_reverse(report[3]) >> 4
-    CoMQualificationIndex = report[4]
-    CoMReason = PossibleReasonsEffect[report[5]]
-    if ContactOrCoM == 0:
-        report_string = "u45  {0:>5} HotpostIndex(Contact):  {1:>4} ContactIndex: {2:>4} QualificationIndex(Contact): {3:>4}".format(timestamp,ContactHotspotIndex,ContactIndex,ContactQualificationIndex)
-        report_string += " " + ContactReason
-    elif ContactOrCoM == 1:
-        report_string = "u45  {0:>5} HotpostIndex(CoM):      {1:>4} CoMIndex:     {2:>4} QualificationIndex(CoM):     {3:>4}".format(timestamp,CoMHotspotIndex,CoMIndex,CoMQualificationIndex)
-        report_string += " " + CoMReason
-    elif ContactOrCoM == 2:
-        report_string = "u45  {0:>5} HotpostIndex(Contact):  {1:>4} ContactIndex: {2:>4} QualificationIndex(Contact): {3:>4}".format(timestamp,ContactHotspotIndex,ContactIndex,ContactQualificationIndex)
-        report_string += " " + ContactReason
-        report_string = "HotpostIndex(CoM):      {0:>4} CoMIndex:     {1:>4} QualificationIndex(CoM):     {2:>4}".format(CoMHotspotIndex,CoMIndex,CoMQualificationIndex)
-        report_string += " " + CoMReason
 
-    
-    report_logger.info(report_string, extra={'usage': 0x45})
+    if ForceOnly:
+        # Extract the timestamp from the report
+        timestamp = report[34] + (report[35] << 8)
+        report_string = "u45  {0:>5} ".format(timestamp)
+        CoMValidReport = list([0,0,0,0])
+        
+        offset = 0
+        for CoM in range(4):
+            ValidReport = report[offset+1]
+            if ValidReport == 1:
+                CoMHotpostIndex = report[offset+0]
+                CoMIndex = CoM
+                CoMQualificationIndex = report[offset+2]
+                CoMReason =PossibleReasonsEffect[report[offset+3]]
+                
+                CoMX = report[offset+4] + (report[offset+5] << 8)
+                CoMY = report[offset+6] + (report[offset+7] << 8)
+                report_string += "HotpostIndex:  {0:>4} CoM Index: {1:>4}  QualificationIndex: {2:>4}  X: {3:>6}   Y: {4:>6}".format(CoMHotpostIndex, CoMIndex,CoMQualificationIndex, CoMX,CoMY)
+                report_string += " " + CoMReason + " "
+                CoMValidReport[CoM] = 1
+            offset+=8
+        if any(CoMValidReport):
+            report_logger.info(report_string, extra={'usage': 0x45})
+    else:
+        # Extract the timestamp from the report
+        timestamp = report[18] + (report[19] << 8)
+        ContactValidReport = report[1] 
+        if ContactValidReport ==1:
+            ContactHotpostIndex = report[0]
+            ContactIndex = 0
+            ContactQualificationIndex = report[2]
+            ContactReason =PossibleReasonsEffect[report[3]]
+            
+            ContactX = report[4] + (report[5] << 8)
+            ContactY = report[6] + (report[7] << 8)
+            
+        
+        CoMValidReport = report[9]
+        if CoMValidReport ==1:
+            CoMHotpostIndex = report[8]
+            CoMIndex = 0
+            CoMQualificationIndex = report[10]
+            CoMReason =PossibleReasonsEffect[report[11]]
+            
+            CoMX = report[12] + (report[13] << 8)
+            CoMY = report[14] + (report[15] << 8)
+        if ContactValidReport==1:
+            report_string = "u45  {0:>5} HotpostIndex(Contact):  {1:>4} Contact Index: {2:>4}  QualificationIndex(Contact): {3:>4}  X(Contact): {4:>6}   Y(Contact): {5:>6}".format(timestamp,ContactHotpostIndex,ContactIndex,ContactQualificationIndex, ContactX,ContactY)
+            report_string += " " + ContactReason + " "
+            if CoMValidReport==1:
+                report_string = "HotpostIndex(CoM):  {0:>4} CoM Index: {1:>4}  QualificationIndex(CoM): {2:>4}  X(CoM): {3:>6}   Y(CoM): {4:>6}".format(ContactHotpostIndex,ContactIndex,ContactQualificationIndex, CoMX,CoMY)
+                report_string += " " + CoMReason
+            report_logger.info(report_string, extra={'usage': 0x45})
+
+        elif CoMValidReport==1:
+            report_string = "u45  {0:>5} HotpostIndex(CoM):  {1:>4} CoM Index: {2:>4}  QualificationIndex(CoM): {3:>4}  X(CoM): {4:>6}   Y(CoM): {5:>6}".format(timestamp,CoMHotpostIndex,CoMIndex,CoMQualificationIndex, CoMX,CoMY)
+            report_string += " " + CoMReason 
+            report_logger.info(report_string, extra={'usage': 0x45})
+
         
 def decode_u01(report_logger, report):
     """
