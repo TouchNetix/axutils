@@ -98,6 +98,7 @@ def decode_u41(report_logger, report):
     timestamp = report[52] + (report[53] << 8)
     checksum = report[54] + (report[55] << 8)
 
+    #print("u41",report[52],report[53])
     report_string = "u41 {0:>5} {1:>3X} {2:>2X}  ".format(timestamp, target_status, extra_info)
 
     # Loop over all the targets in the report and extract the X, Y and Z values.
@@ -143,8 +144,8 @@ def decode_u45(report_logger, report):
 
     if ForceOnly:
         # Extract the timestamp from the report
-        timestamp = report[34] + (report[35] << 8)
-        report_string = "u45  {0:>5} ".format(timestamp)
+        timestamp = report[32] + (report[33] << 8)
+        report_string = "u45 {0:>5} ".format(timestamp)
         CoMValidReport = list([0,0,0,0])
         
         offset = 0
