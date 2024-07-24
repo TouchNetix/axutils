@@ -147,8 +147,8 @@ def decode_u4C(report_logger, u4c_report):
             pilot_id_string = "??Pilot ID??"
 
         if target_status & (1 << t) != 0:
-            #report_string += "(T{0}: {1:>5},{2:>5},{3:>4}, P{4:12}) ".format(t, x, y, z, pilot_id_string)
-            report_string += "{5}(T{0}: {1:>5},{2:>5},{3:>4}, P{4:12}){6} ".format(t, x, y, z, pilot_id_string, log_entry_colour, log_entry_colour_reset)
+            #report_string += "(T{0}: {1:>5},{2:>5},{3:>4}, {4:12}) ".format(t, x, y, z, pilot_id_string)
+            report_string += "{5}(T{0}: {1:>5},{2:>5},{3:>4}, {4:12}){6} ".format(t, x, y, z, pilot_id_string, log_entry_colour, log_entry_colour_reset)
         elif target_status != 0:
             report_string += "                                   "
 
