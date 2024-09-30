@@ -16,8 +16,6 @@ from exitcodes import *
 # Global Variables  ------------------------------------------------------------
 keyboard_signal_interrupt_requested = False
 
-last_u41_report = None
-u4C_field_index_with_pilot_id = math.inf
 # End of Global Variables ------------------------------------------------------
 
 
@@ -77,80 +75,56 @@ def decode_and_process_report(report, report_logger):
         decode_u41(report_logger, report[2:])
     elif report[1] == 0x45:
         decode_u45(report_logger, report[2:])
-    elif report[1] == 0x4C:
-        decode_u4C(report_logger, report[2:])
 
 
 def decode_u41(report_logger, report):
     """
-    NOTE: For Pilot ID, we are going to process u41 and u4C at the same time. u41
-          reports will come out first, so capture the report here and then it will
-          be decoded and processed in u4C
+    NOTE: This code assumes the system has been configured to report pilot ID values. See pilot_id_init() for prerequisites
     """
-    global last_u41_report
-    last_u41_report = report
 
+    # Extract the timestamp from the report
+    timestamp = report[52] + (report[53] << 8)
 
-def decode_u4C(report_logger, u4c_report):
-    """
-    Decode u4C 2DCTS Meta Data report. This is a very basic decode to demonstrate
-    pilot ID. 
-    """
-    global u4C_field_index_with_pilot_id
-
-    if last_u41_report == None:
-        # Discard this u4C as we don't have a valid u41
-        return
-    
-    # Compare the u41 and u4C timestamps to ensure they came from the same measurement frame
-    u41_timestamp = last_u41_report[52] + (last_u41_report[53] << 8)
-    u4c_timestamp = u4c_report[52] + (u4c_report[53] << 8)
-
-    if u41_timestamp != u4c_timestamp:
-        report_logger.info("u4C and u41 timestamps are inconsistent!", extra={'usage': 0x4C})
-        return
-    
     # Find out which targets are reporting a position in this report
-    target_status = (last_u41_report[0]) + ((last_u41_report[1] & 0x03) << 8)
+    target_status = (report[0]) + ((report[1] & 0x03) << 8)
 
-    report_string = "u41/u4C {0:>5} {1:>3X}  ".format(u4c_timestamp, target_status)
+    # Log Header
+    report_string = "u41 {0:>5} {1:3X}  ".format(timestamp, target_status)
 
     # Loop over all the targets in the report and extract the X, Y and Z values.
     for t in range(0, 10):
-        # X & Y
+        # X & Y, the pilot ID is also encoded in these fields
         u41_offset = (t * 4) + 2
-        x = last_u41_report[u41_offset + 0] + (last_u41_report[u41_offset + 1] << 8)
-        y = last_u41_report[u41_offset + 2] + (last_u41_report[u41_offset + 3] << 8)
+        x = report[u41_offset + 0] + (report[u41_offset + 1] << 8)
+        y = report[u41_offset + 2] + (report[u41_offset + 3] << 8)
 
         # Z
         u41_offset = (t * 1) + 42
-        z = last_u41_report[u41_offset]
+        z = report[u41_offset]
 
-        # Pilot ID
-        u4c_offset = 2 + (t * 5) + u4C_field_index_with_pilot_id
-        pilot_id = u4c_report[u4c_offset]
-        log_entry_colour = "\x1b[38;20m" # Grey
-        log_entry_colour_reset = "\x1b[0m"
-        if pilot_id == 0x01:
-            pilot_id_string = "Driver" 
-            log_entry_colour = "\x1b[33;20m"
-        elif pilot_id == 0x02:
-            pilot_id_string = "Passenger"
-            log_entry_colour = "\x1b[31;20m"
-        elif pilot_id == 0xEF:
-            pilot_id_string = "Disabled"
-            log_entry_colour = "\x1b[34;20m"
-        elif pilot_id == 0xFF:
-            pilot_id_string = "Unknown"
-            log_entry_colour = "\x1b[32;20m"
+        # Extract the pilot ID field out of the X and Y values and then adjust the X and Y values accordingly
+        pilot_id = ((x & 0x03) |        # X contains the lowest 2 bits of the pilot ID value
+                    ((y & 0x03) << 2))  # Y contains the upper 2 bits of the pilot ID value
+        x = x >> 2
+        y = y >> 2
+
+        log_entry_colour_reset = "\033[0m"
+        if pilot_id == 0:
+            pilot_id_string = "NoID" # No ID (normal touch, non-pilot ID)
+            log_entry_colour = "\033[95m"
+        elif pilot_id == 15:
+            pilot_id_string = "????" # Undetermined ID
+            log_entry_colour = "\033[91m"
         else:
-            pilot_id_string = "??Pilot ID??"
+            pilot_id_string = f"ID{pilot_id:02}"
+            log_entry_colour = "\033[32m"
 
         if target_status & (1 << t) != 0:
-            #report_string += "(T{0}: {1:>5},{2:>5},{3:>4}, {4:12}) ".format(t, x, y, z, pilot_id_string)
-            report_string += "{5}(T{0}: {1:>5},{2:>5},{3:>4}, {4:12}){6} ".format(t, x, y, z, pilot_id_string, log_entry_colour, log_entry_colour_reset)
-        elif target_status != 0:
-            report_string += "                                   "
+            report_string += "{5}(T{0}: {1:>4},{2:>4},{3}, {4:4}){6} ".format(t, x, y, z, pilot_id_string,
+                                                                                  log_entry_colour,
+                                                                                  log_entry_colour_reset)
+        else:
+            report_string += "                        "
 
     # Only log the report if there was something to report
     if target_status != 0:
@@ -256,31 +230,35 @@ def configure_report_logger(report_filter):
     return logger
 
 def pilot_id_init(ax):
-    # NOTE: Pilot ID is not fully released in official firmware. The way Pilot ID information is transmitted will change
-    #       to be more simple (i.e. everything in u41).
+    # NOTE: Pilot ID feature is not officially released in any aXiom firmware yet. This is an early usage example.
     #
-    # With Pilot ID, the touch information (X, Y and Z) are transmitted in u41 reports. The Pilot ID information is
-    # transmitted in u4C reports. u4C can be configured in u4D to transmit additional meta data of the touches.
-    # u41 and u4C are transmitted separately, therefore, both reports are required before the touch information can be
-    # reported/processed.
+    # For Pilot ID to function, the system needs to be configured correctly. This method, pilot_id_init(), is intended
+    # to check this. The intention is to report all the touch information and Pilot ID in a single report. There are
+    # only 5 bytes available for each touch. Therefore, the 16bit X and Y fields have been converted into 14bit values.
+    # The 2 spare bits in the X and Y fields can be combined to form a nibble of data. This nibble can then be decoded
+    # into the Pilot ID value.
     #
-    # This reference code expects that the u41 and u4C timestamps are synced via the u4D register setting.
-    global u4C_field_index_with_pilot_id
+    # u42 needs to be configured to enable coordinate scaling. When coordinate scaling is enabled, the spare bits are
+    # available for Pilot ID. The content of the spare bits is configured in the nibble option field. With the
+    # coordinates being scaled, the max X and max Y fields will determine the touch coordinates. Typically configured
+    # to match the display resolution.
+    u42 = ax.read_usage(0x42)
 
-    u4D = ax.read_usage(0x4D)
-    u4C_reports_allowed = u4D[0] & 0x01
-    u4C_timestamps_synced = (u4D[0] & 0x02) >> 1
+    coord_scaling = u42[2] & 0x1
+    nibble_option = (u42[2] & 0xE) >> 1
 
-    for x in range(5):
-        if u4D[4 + x] == 0x08:
-            u4C_field_index_with_pilot_id = x
-            break
+    # Read the max X and max Y coordinate values (typically set to match the display resolution)
+    max_x = u42[4] | (u42[5] << 8)
+    max_y = u42[6] | (u42[7] << 8)
 
-    if u4C_reports_allowed == 0 or u4C_timestamps_synced == 0 or u4C_field_index_with_pilot_id == math.inf:
+    if coord_scaling == 0 or nibble_option != 1:
         return ERROR_ARG_SYNTAX_ERROR
-    
-    return SUCCESS
 
+    print("Max Coordinate Values:")
+    print(f"  X : {max_x}")
+    print(f"  Y : {max_y}")
+
+    return SUCCESS
 
 if __name__ == '__main__':
     # Create argument parser
