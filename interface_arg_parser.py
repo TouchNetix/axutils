@@ -7,7 +7,6 @@ import argparse
 
 from version import __version__
 
-
 def interface_arg_parser():
     """
     Adds the interface options to the argument parser so that all scripts can have a common set of arguments when
@@ -23,7 +22,7 @@ def interface_arg_parser():
     # Add arguments to all the interfaces
     interface_group.add_argument("-i", "--interface",
                                  help='Comms interface to communicate with aXiom',
-                                 choices=["spi", "i2c", "usb"],
+                                 choices=["spi", "i2c", "usb", "tcp"],
                                  required=True)
 
     # Add I2C options, the bus number and the address
@@ -45,6 +44,18 @@ def interface_arg_parser():
                                  help='SPI device for CS, as per `/dev/spi<bus>.<device>`',
                                  metavar='DEV',
                                  type=int)
+
+    # Add the TCP options, the host and port
+    interface_group.add_argument("--host",
+                                 default="0.0.0.0",
+                                 help="Host address/hostname for TCP connection",
+                                 metavar="HOST")
+    interface_group.add_argument("--port",
+                                 default=3825,
+                                 help="Port number for TCP connection, default: 3825",
+                                 metavar="PORT",
+                                 type=int)
+
     return parser
 
 
@@ -75,5 +86,10 @@ def get_comms_from_args(parser):
         from axiom_tc import USB_Comms
 
         comms = USB_Comms()
+
+    if args.interface == "tcp":
+        from axiom_tc import TCP_Comms
+
+        comms = TCP_Comms(args.host, args.port)
 
     return comms
