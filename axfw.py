@@ -7,7 +7,7 @@ import os
 import sys
 import struct
 import binascii
-from time import sleep
+import time
 from axiom_tc import axiom
 from axiom_tc import Bootloader
 from axiom_tc import u31_DeviceInformation
@@ -162,6 +162,8 @@ def alc_download(ax, firmware_file):
     """
     bl = Bootloader(ax, ax._comms)
 
+    start_time = time.perf_counter()
+
     if firmware_file.endswith("alc"):
         firmware_start_offset = 0
     else:
@@ -196,9 +198,13 @@ def alc_download(ax, firmware_file):
 
     print("")
 
+    end_time = time.perf_counter()
+    elapsed_time = end_time - start_time
+    print(f"Elapsed time: {elapsed_time:.6f} seconds")
+
     # Reset the aXiom bootloader so that the new firmware is active.
     bl.reset_axiom()
-    sleep(2)
+    time.sleep(0.150)
     return SUCCESS
 
 
