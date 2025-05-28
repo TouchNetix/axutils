@@ -45,17 +45,6 @@ def interface_arg_parser():
                                  metavar='DEV',
                                  type=int)
 
-    # Add the TCP options, the host and port
-    interface_group.add_argument("--host",
-                                 default="0.0.0.0",
-                                 help="Host address/hostname for TCP connection",
-                                 metavar="HOST")
-    interface_group.add_argument("--port",
-                                 default=3825,
-                                 help="Port number for TCP connection, default: 3825",
-                                 metavar="PORT",
-                                 type=int)
-
     return parser
 
 
@@ -86,10 +75,5 @@ def get_comms_from_args(parser):
         from axiom_tc import USB_Comms
 
         comms = USB_Comms()
-
-    if args.interface == "tcp":
-        from axiom_tc import TCP_Comms
-
-        comms = TCP_Comms(args.host, args.port)
 
     return comms

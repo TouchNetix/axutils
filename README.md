@@ -2,23 +2,67 @@
 
 Reference code in this section is provided to demonstrate how small tools can be created to handle different maintenance operations of an aXiom Device.
 
+## Firmware Downloads
+
 `axfw.py` uploads a new firmware image onto an aXiom device.
+
+```console
+python axfw.py -i usb ax112a_3D_rt_rMMmmpp_prod.axfw
+```
+
+## Configuration Updates
 
 `axcfg.py` uploads a binary configuration file to an aXiom device. Binary configuration files are created by TouchHub2.
 
-`axut.py` queries an aXiom device and reports firmware version information as well as the usage table.
+```console
+python axcfg.py -i i2c --i2c-bus 1 --i2c-address 0x66 ax112a_loa.th2cfgbin
+```
+
+## View an aXiom Device's Usage Table
+
+`axut.py` queries an aXiom device and reports firmware version information as well as the usage table. This is a useful check that aXiom is available without making changes to the device.
+
+```console
+python axut.py -i usb
+```
+
+## View aXiom reports
 
 `axrpt.py` provides example code to read reports from aXiom in either a polled or interrupt driven scheme. A Raspberry Pi is required for this interrupt driven example to function.
 
+Depending on the system this is being run on, the reports can be polled or interrupt driven (preferred).
+
+This example uses a RPi GPIO 24 as an interrupt to read touch reports (u41) from aXiom
+```console
+python axrpt.py -i spi --spi-bus 0 --spi-device 0 --gpioint 24 --reports 0x41 
+```
+
+This is a polled example (typical for Windows systems):
+```console
+python axrpt.py -i usb 
+```
+
+## Extract factory data from an aXiom device
+
 `axfactdata.py` reads out the aXiom device's factory data.
+
+## Control a Protocol Bridge's Mode
 
 `axtbp.py` can be used to change the mode (Basic, Digitizer, Absolute Mouse) of the provided USB protocol bridge.
 
+## Interface options
+
 `interface_arg_parser.py` helper functions to parse script arguments. Specifically, it handles the interface (I2C, SPI, USB) options so that all scripts have a consistent interface.
 
-## Prerequisites
+# Prerequisites
 
 Requires Python 3.8 to be installed and accessible on the Path variable.
+
+Prerequisites can be installed via the `requirements.txt`:
+
+```console
+pip install -r requirements.txt
+```
 
 ### axiom_tc Package
 
@@ -80,7 +124,7 @@ SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="2f04", MODE="06
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="28e9", ATTRS{idProduct}=="2f08", MODE="0666"
 ```
 
-The changes will apply on the next bootup. To apply the changes immediately:
+The changes will apply on the next reboot. To apply the changes immediately:
 
 ```console
 sudo udevadm control --reload-rules
@@ -101,7 +145,7 @@ sudo apt-get install libhidapi-hidraw0 libhidapi-libusb0
 
 #### Windows
 
-Windows requires the `hidapi.dll` files to reside in the same directory as python (see more info [here](https://github.com/abcminiuser/python-elgato-streamdeck/issues/56))
+Windows requires the `hidapi.dll` files to reside in the same directory as Python (see more info [here](https://github.com/abcminiuser/python-elgato-streamdeck/issues/56))
 The `.dll` files can be found [here](https://github.com/libusb/hidapi/releases)
 
 ### RPi.GPIO
@@ -181,11 +225,11 @@ The data to be sent is the entire chunk, including the header. The information o
 
 #### alc
 
-`.alc` files are the same as`.axfw` files, just without the meta data section. See the axfw section for a description on how the payloads are structured.
+`.alc` files are the same as `.axfw` files, just without the meta data section. See the axfw section for a description on how the payloads are structured.
 
 ### Configuration Files
 
-aXiom config files are export from TouchHub2 as `.th2cfgbin` files. The data structure for this file type is specified in the table below.
+aXiom config files are exported from TouchHub2 as `.th2cfgbin` files. The data structure for this file type is specified in the table below.
 
 This table describes the meta data stored in the header section of the `.th2cfgbin` files.
 
@@ -212,7 +256,7 @@ The remaining content of the config file is the data that needs to be written to
 
 ### Linux Kernel Module Driver Compatibility
 
-The `axutils` scripts are meant to be used on a system running. However, depending on the software stack and communication interface used this may not always be completely possible, as detailed on the following table:
+The `axutils` scripts are meant to be used on a system running aXiom devices. However, depending on the software stack and communication interface used this may not always be completely possible, as detailed on the following table:
 
 | Comms  | Driver Stack | Compatible            |
 | :----: | :---         | :---                  |
