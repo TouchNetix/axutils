@@ -248,9 +248,19 @@ The remaining content of the config file is the data that needs to be written to
 | :---:    | :----          | :---                                      |
 | 0        | Usage Number   | The usage identifier                      |
 | 1        | Usage Revision | The revision of the usage                 |
-| 2        | Padding        | Reserved for future use                   |
+| 2        | Usage Type     | See usage type definitions below          |
 | 3-4      | Usage Length   | Length of usage contents, *Little Endian* |
 | 5-Length | Usage Content  | Binary content of the usage               |
+
+Usage types are defined as follows:
+
+- `0`: `Undefined`, for backwards compatibility
+- `1`: `Other`, usages like u31, u34 and uF2
+- `2`: `Report`, u41 touch reports etc
+- `3`: `Register`, a usage that can be read and written to
+- `4`: `Read Only Register`, a usage that can only be read such as u32, u33, u36 and u07
+- `5`: `CDU`, a Command Driven Usage that can be read and written to, but requires extra logic to perform a write above what is required for a normal usage, for example u22, u43 and u93
+- `6`: `CDU Read Only`, a Command Driven Usage that can only be read and requires the same extra CDU logic for writes, for example u82
 
 *Note:* It is generally recommended to not write to u04 (Customer Data) as the intended purpose of this field is for customers to store data like serial numbers, part numbers etc. Writing to u04 will lose this information.
 
