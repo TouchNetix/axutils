@@ -34,26 +34,35 @@ def extract_usages_from_config_file(config_file):
             # identify the file as an aXiom config file.
             signature = struct.unpack(">I", file.read(4))[0]
             if signature == 0x20071969:
-                # Skip to offset 13 (from start of file) to skip over the header and
-                # get straight to the usage contents.
-                file.seek(13)
+                fileRevision = struct.unpack("<H", file.read(2))[0]
 
-                # Keep decoding the file until the end of file position is reached.
-                while True:
-                    # Extract the usage contents from the config file
-                    usage, revision, _, length = struct.unpack("<3BH", file.read(5))
-                    usage_content = list(struct.unpack("<" + str(length) + "B", file.read(length)))
+                if fileRevision == 0x0001:
+                    headerSize = 13
+                elif fileRevision == 0x0002:
+                    headerSize = 24
+                else:
+                    headerSize = 0
 
-                    # Store the contents into the usages list
-                    usages[usage] = (usage, revision, usage_content)
+                if headerSize > 0:
+                    # Skip over the header and get straight to the usage contents.
+                    file.seek(headerSize)
 
-                    # Check if the end of file has been reached
-                    if file.tell() == all_usages_size:
-                        break
+                    # Keep decoding the file until the end of file position is reached.
+                    while True:
+                        # Extract the usage contents from the config file
+                        usage, revision, _, length = struct.unpack("<3BH", file.read(5))
+                        usage_content = list(struct.unpack("<" + str(length) + "B", file.read(length)))
 
-            # Remove the config file header from the size. Also remove the 5 bytes of
-            # overhead for each usage from the overall length.
-            all_usages_size -= 13 + (len(usages) * 5)
+                        # Store the contents into the usages list
+                        usages[usage] = (usage, revision, usage_content)
+
+                        # Check if the end of file has been reached
+                        if file.tell() == all_usages_size:
+                            break
+
+                    # Remove the config file header from the size. Also remove the 5 bytes of
+                    # overhead for each usage from the overall length.
+                    all_usages_size -= 13 + (len(usages) * 5)
     except FileNotFoundError:
         print("Config file not found: " + config_file)
     except IOError:
