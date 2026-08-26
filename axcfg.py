@@ -11,8 +11,8 @@ from axiom_tc import axiom
 from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
 from interface_arg_parser import *
+from common import *
 from exitcodes import *
-
 
 def show_progress(current, total):
     progress = (float(current) / float(total)) * 100
@@ -21,55 +21,79 @@ def show_progress(current, total):
     sys.stdout.flush()
     sys.stdout.write('\033[?25h')  # Show cursor
 
-
 def extract_usages_from_config_file(config_file):
     all_usages_size = 0
     usages = {}
 
     try:
-        all_usages_size = os.path.getsize(config_file)
+        file_size = os.path.getsize(config_file)
 
         with open(config_file, "rb") as file:
-            # The first 4 bytes of the file contains a signature that we use to
-            # identify the file as an aXiom config file.
+            # The first 4 bytes of the file contain a signature to identify the file type.
             signature = struct.unpack(">I", file.read(4))[0]
-            if signature == 0x20071969:
-                fileRevision = struct.unpack("<H", file.read(2))[0]
+            if signature != 0x20071969:
+                print("Config file signature invalid")
+                return ERROR_CFG_FILE_INVALID, all_usages_size, usages
+                
+            # Extract header information
+            fileRevision = struct.unpack("<H", file.read(2))[0]            
+            headerSize = 0
+            fileCrc = 0
+            tcpRevision = 0
+            if fileRevision == 0x0001:
+                headerSize = 13
+                file.seek(12) # Discard the TCP File Revision
+                tcpRevision = struct.unpack("B", file.read(1))[0]
+            elif fileRevision == 0x0002:
+                headerSize = 24
+                fileCrc = signature = struct.unpack("<I", file.read(4))[0]
+                tcpRevision = struct.unpack("B", file.read(1))[0]
+            else:
+                print("Config file revision unsupported")
+                return ERROR_CFG_FILE_INVALID, all_usages_size, usages
+            
+            # Validate the file CRC
+            if fileRevision >= 0x0002:
+                # The CRC is calculated starting from byte 10
+                calculatedFileCrc = get_file_crc(config_file, 10)
+                if calculatedFileCrc != fileCrc:
+                    print("Config file CRC invalid")
+                    return ERROR_CFG_FILE_INVALID, all_usages_size, usages
+                        
+            # Check the TCP revision
+            if tcpRevision != 1:
+                print("Config file TCP revision unsupported")
+                return ERROR_CFG_FILE_INVALID, all_usages_size, usages
+            
+            # Skip over the header and get straight to the usage contents.
+            file.seek(headerSize)
 
-                if fileRevision == 0x0001:
-                    headerSize = 13
-                elif fileRevision == 0x0002:
-                    headerSize = 24
-                else:
-                    headerSize = 0
+            # Keep decoding the file until the end of file position is reached.
+            while True:
+                # Extract the usage contents from the config file
+                usage, revision, _, length = struct.unpack("<3BH", file.read(5))
+                usage_content = list(struct.unpack("<" + str(length) + "B", file.read(length)))
 
-                if headerSize > 0:
-                    # Skip over the header and get straight to the usage contents.
-                    file.seek(headerSize)
+                # Store the contents into the usages list
+                usages[usage] = (usage, revision, usage_content)
 
-                    # Keep decoding the file until the end of file position is reached.
-                    while True:
-                        # Extract the usage contents from the config file
-                        usage, revision, _, length = struct.unpack("<3BH", file.read(5))
-                        usage_content = list(struct.unpack("<" + str(length) + "B", file.read(length)))
+                # Check if the end of file has been reached
+                if file.tell() >= file_size:
+                    break
 
-                        # Store the contents into the usages list
-                        usages[usage] = (usage, revision, usage_content)
+            # Remove the config file header from the size.
+            # Also remove the 5 bytes of overhead for each usage from the overall length.
+            all_usages_size = file_size - (headerSize + (len(usages) * 5))
 
-                        # Check if the end of file has been reached
-                        if file.tell() == all_usages_size:
-                            break
-
-                    # Remove the config file header from the size. Also remove the 5 bytes of
-                    # overhead for each usage from the overall length.
-                    all_usages_size -= 13 + (len(usages) * 5)
+            return SUCCESS, all_usages_size, usages
     except FileNotFoundError:
         print("Config file not found: " + config_file)
+        return ERROR_CFG_FILE_INVALID, all_usages_size, usages
     except IOError:
         print("An error occurred while accessing the config file")
+        return ERROR_CFG_FILE_INVALID, all_usages_size, usages
 
-    return all_usages_size, usages
-
+    return ERROR_CFG_FILE_INVALID, all_usages_size, usages
 
 def axcfg(ax, config_file, overwrite_u04):
     # Read u33 from the device to validate the config file is compatible later. u31 is
@@ -77,7 +101,13 @@ def axcfg(ax, config_file, overwrite_u04):
     u33 = u33_CRCData(ax)
 
     # Extract out of the config file all the usages into a dictionary.
-    all_usages_size, usages = extract_usages_from_config_file(config_file)
+    exit_code, all_usages_size, usages = extract_usages_from_config_file(config_file)
+    if exit_code != SUCCESS:
+        return exit_code
+
+    if all_usages_size <= 0 or len(usages) == 0:
+        print("Config file does not contain any valid usages")
+        return ERROR_CFG_FILE_INVALID
 
     # Before the new config is written to the device, check that the config file
     # is compatible with the device by comparing the runtime CRC in u33. Manually
