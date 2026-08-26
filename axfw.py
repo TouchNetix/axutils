@@ -13,6 +13,7 @@ from axiom_tc import Bootloader
 from axiom_tc import u31_DeviceInformation
 from axiom_tc import u33_CRCData
 from interface_arg_parser import *
+from common import *
 from exitcodes import *
 
 
@@ -22,21 +23,6 @@ def show_progress(current, total):
     sys.stdout.write("Progress: %3.0f%%\r" % progress)
     sys.stdout.flush()
     sys.stdout.write('\033[?25h')  # Show cursor
-
-
-def get_axfw_file_crc(firmware_file):
-    """
-    The .axfw file contains a CRC value that is used to validate the contents of
-    firmware file. This function returns the calculated .axfw file CRC.
-    """
-    file_size = os.path.getsize(firmware_file)
-    with open(firmware_file, 'rb') as file:
-        # Data to do the CRC calculation starts at byte 8 in the .axfw file
-        file.seek(8)
-        axfw_file = file.read((file_size - 8))
-        crc = binascii.crc32(axfw_file, 0)
-    return crc
-
 
 def axfw_get_fw_info_from_file(firmware_file):
     """
@@ -60,7 +46,8 @@ def axfw_get_fw_info_from_file(firmware_file):
             print("ERROR: Unknown .axfw format version")
             return ERROR_AXFW_NOT_VALID
 
-        axfw_crc_calculated = get_axfw_file_crc(firmware_file)
+        # The CRC is calculated starting from byte 8
+        axfw_crc_calculated = get_file_crc(firmware_file, 8)
         if axfw_crc != axfw_crc_calculated:
             print("ERROR: The .axfw CRC was invalid")
             return ERROR_AXFW_NOT_VALID
