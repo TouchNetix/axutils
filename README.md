@@ -231,7 +231,7 @@ The data to be sent is the entire chunk, including the header. The information o
 
 aXiom binary config files are exported from TouchHub2 as `.th2cfgbin` files. The data structure for this file type is specified in the tables below.
 
-#### Header (File Revision 0.01)
+#### Header (File Revision 0x0001)
 
 This table describes the meta data stored in the header section of the `.th2cfgbin` files.
 
@@ -244,7 +244,7 @@ This table describes the meta data stored in the header section of the `.th2cfgb
 | 10-11   | TCP File Revision Patch |              |
 | 12      | TCP Revision            |              |
 
-#### Header (File Revision 0.02)
+#### Header (File Revision 0x0002)
 
 This table describes the meta data stored in the header section of the `.th2cfgbin` files.
 
