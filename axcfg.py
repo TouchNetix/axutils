@@ -46,7 +46,7 @@ def extract_usages_from_config_file(config_file):
                 tcpRevision = struct.unpack("B", file.read(1))[0]
             elif fileRevision == 0x0002:
                 headerSize = 24
-                fileCrc = signature = struct.unpack("<I", file.read(4))[0]
+                fileCrc = struct.unpack("<I", file.read(4))[0]
                 tcpRevision = struct.unpack("B", file.read(1))[0]
             else:
                 print("Config file revision unsupported")
@@ -191,8 +191,10 @@ def axcfg_compare_u33(ax, config_file):
     u33 = u33_CRCData(ax)
 
     # Extract out of the config file all the usages into a dictionary.
-    all_usages_size, usages = extract_usages_from_config_file(config_file)
-
+    exit_code, all_usages_size, usages = extract_usages_from_config_file(config_file)
+    if exit_code != SUCCESS:
+        return exit_code
+    
     # Before the new config is written to the device, check that the config file
     # is compatible with the device by comparing the runtime CRC in u33. Manually
     # populate the u33 content with the content from the file so that a compatibility

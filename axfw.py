@@ -6,7 +6,6 @@
 import os
 import sys
 import struct
-import binascii
 import time
 from axiom_tc import axiom
 from axiom_tc import Bootloader
