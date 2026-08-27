@@ -7,7 +7,7 @@ Reference code in this section is provided to demonstrate how small tools can be
 `axfw.py` uploads a new firmware image onto an aXiom device.
 
 ```console
-python axfw.py -i usb ax112a_3D_rt_rMMmmpp_prod.axfw
+python axfw.py -i usb -f ax112a_3D_rt_rMMmmpp_prod.axfw
 ```
 
 ## Configuration Updates
@@ -15,7 +15,7 @@ python axfw.py -i usb ax112a_3D_rt_rMMmmpp_prod.axfw
 `axcfg.py` uploads a binary configuration file to an aXiom device. Binary configuration files are created by TouchHub2.
 
 ```console
-python axcfg.py -i i2c --i2c-bus 1 --i2c-address 0x66 ax112a_loa.th2cfgbin
+python axcfg.py -i i2c --i2c-bus 1 --i2c-address 0x66 -f ax112a_loa.th2cfgbin
 ```
 
 ## View an aXiom Device's Usage Table
@@ -227,9 +227,11 @@ The data to be sent is the entire chunk, including the header. The information o
 
 `.alc` files are the same as `.axfw` files, just without the meta data section. See the axfw section for a description on how the payloads are structured.
 
-### Configuration Files
+### Binary Configuration Files
 
-aXiom config files are exported from TouchHub2 as `.th2cfgbin` files. The data structure for this file type is specified in the table below.
+aXiom binary config files are exported from TouchHub2 as `.th2cfgbin` files. The data structure for this file type is specified in the tables below.
+
+#### Header (File Revision 0x0001)
 
 This table describes the meta data stored in the header section of the `.th2cfgbin` files.
 
@@ -240,7 +242,21 @@ This table describes the meta data stored in the header section of the `.th2cfgb
 | 6-7     | TCP File Revision Major |              |
 | 8-9     | TCP File Revision Minor |              |
 | 10-11   | TCP File Revision Patch |              |
-| 12      | TCP Version             |              |
+| 12      | TCP Revision            |              |
+
+#### Header (File Revision 0x0002)
+
+This table describes the meta data stored in the header section of the `.th2cfgbin` files.
+
+| Byte(s) | Description             | Notes        |
+| :---:   | :----                   | :---         |
+| 0-3     | File Signature          | `0x20071969` |
+| 4-5     | File Format Version     | `0x0002`     |
+| 6-9     | File CRC                | CRC32        |
+| 10      | TCP Revision            |              |
+| 11-23   | Reserved                |              |
+
+#### Usage Content
 
 The remaining content of the config file is the data that needs to be written to aXiom. The config data is split into usages. Each usage is packed contiguously, and can be navigated by reading the usage length fields.
 
