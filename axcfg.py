@@ -129,11 +129,15 @@ def axcfg(ax, config_file, overwrite_u04):
     ax.u02.send_command(ax.u02.CMD_SAVE_CONFIG)
 
     # Give aXiom some time to write the contents to NVM.
-    sleep(2)
+    sleep(0.5)
 
-    # Restart aXiom
-    ax.u02.send_command(ax.u02.CMD_SOFT_RESET)
-    sleep(1)
+    # Restart aXiom and wait for reboot/self-tests to complete
+    if not ax.reset_axiom():
+        print("ERROR: Device failed to enter runtime mode after configuration write.")
+        return ERROR_AXIOM_IN_BOOTLOADER
+
+    # Re-compute CRCs on device to reflect newly saved configuration
+    ax.u02.send_command(ax.u02.CMD_COMPUTE_CRCS)
 
     # Verify if the contents have been loaded onto the device correctly by re-reading
     # u33 from the device and comparing it with the file
@@ -149,6 +153,7 @@ def axcfg(ax, config_file, overwrite_u04):
 def axcfg_compare_u33(ax, config_file):
     # Read u33 from the device to validate the config file is compatible later. u31 is
     # also required, but that is already available via the ax.u31 object.
+    ax.u02.send_command(ax.u02.CMD_COMPUTE_CRCS)
     u33 = u33_CRCData(ax)
 
     # Extract out of the config file all the usages into a dictionary.
@@ -251,6 +256,7 @@ Exit status codes:
 
         # Read the device's u33
         elif args.file is None and args.check:
+            ax.u02.send_command(ax.u02.CMD_COMPUTE_CRCS)
             u33 = u33_CRCData(ax)
             u33.print()
         else:

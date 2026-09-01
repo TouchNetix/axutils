@@ -118,8 +118,10 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
         return return_code, None
 
     # Compare the device ID from the device and the .axfw file. This returns a different
-    # code as this is not something that the --force option can overcome.
+    # code as this is not something that the --force option can overcome unless in bootloader mode.
     if u31_device_id != file_device_id:
+        if ax.is_in_bootloader_mode():
+            return ERROR_AXIOM_IN_BOOTLOADER, file_fw_crc
         u31_device_str = ax.u31.convert_device_id_to_string(u31_device_id)
         device_id_str = ax.u31.convert_device_id_to_string(file_device_id)
         print(f"ERROR: The .axfw file is for a different device. Device: {u31_device_str}, File: {device_id_str}")
@@ -203,8 +205,10 @@ def alc_download(ax, firmware_file):
     print(f"Elapsed time: {elapsed_time:.6f} seconds")
 
     # Reset the aXiom bootloader so that the new firmware is active.
-    bl.reset_axiom()
-    time.sleep(0.150)
+    if not ax.reset_axiom():
+        print("ERROR: Failed to reset aXiom into runtime mode.")
+        return ERROR_AXIOM_IN_BOOTLOADER
+
     return SUCCESS
 
 
@@ -294,8 +298,9 @@ Exit status codes:
             if exit_code in [SUCCESS, ERROR_AXIOM_IN_BOOTLOADER] or (exit_code in [INFO_FIRMWARE_LOAD_NOT_REQUIRED, ERROR_AXFW_FIRMWARE_VARIANT_DIFFERENT] and args.force):
                 exit_code = axfw_download(ax, args.file)
                 if exit_code == SUCCESS:
-                    ax.u31.build_usage_table()
                     print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
+                    if ax.u02 is not None:
+                        ax.u02.send_command(ax.u02.CMD_COMPUTE_CRCS)
                     u33 = u33_CRCData(ax)
                     if u33.reg_runtime_nvm_crc != fw_crc:
                         print(
@@ -312,7 +317,6 @@ Exit status codes:
             # Must be alc download
             exit_code = alc_download(ax, args.file)
             if exit_code == SUCCESS:
-                ax.u31.build_usage_table()
                 print("Device FW Info : {0}".format(ax.u31.get_device_info_short()))
 
     # Safely close the connection to aXiom and set the exit code
