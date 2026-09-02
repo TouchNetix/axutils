@@ -117,16 +117,17 @@ def axfw_check_file_and_validate_parameters(ax, firmware_file):
     if return_code != SUCCESS:
         return return_code, None
 
-    # Compare the device ID from the device and the .axfw file. This returns a different
-    # code as this is not something that the --force option can overcome unless in bootloader mode.
+    # Compare the device ID from the device and the .axfw file. This check is enforced
+    # in both runtime and bootloader modes, as device ID is always readable from u31.
     if u31_device_id != file_device_id:
-        if ax.is_in_bootloader_mode():
-            return ERROR_AXIOM_IN_BOOTLOADER, file_fw_crc
         u31_device_str = ax.u31.convert_device_id_to_string(u31_device_id)
         device_id_str = ax.u31.convert_device_id_to_string(file_device_id)
         print(f"ERROR: The .axfw file is for a different device. Device: {u31_device_str}, File: {device_id_str}")
         return ERROR_AXFW_NOT_COMPATIBLE_WITH_DEVICE, None
 
+    # If the device is in bootloader mode, the firmware variant (e.g. 2D vs 3D) cannot
+    # be determined from u31, so allow the download to proceed. In runtime mode, return
+    # an error if the variant doesn't match (can be overridden with --force).
     if u31_fw_variant != file_fw_variant:
         if ax.u31.reg_mode:
             return ERROR_AXIOM_IN_BOOTLOADER, file_fw_crc
